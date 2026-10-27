@@ -1,0 +1,139 @@
+plugins {
+    id 'fabric-loom' version '1.6.12'
+    id 'com.google.protobuf' version '0.9.6'
+}
+
+group = 'dev.kizuna'
+version = '0.1.0-SNAPSHOT'
+ext.protobufVersion = '4.36.2'
+ext.kpaDir = file(findProperty('kpaDir') ?: '../Kizuna-Players-Animation')
+ext.kpaProtoDir = new File(kpaDir, 'src/main/proto')
+
+repositories { mavenCentral() }
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.20.1'
+    mappings 'net.fabricmc:yarn:1.20.1+build.10:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.3+1.20.1'
+    modImplementation files(new File(kpaDir, 'build/libs/kizuna-players-animation-0.1.0-SNAPSHOT.jar'))
+    implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    include "com.google.protobuf:protobuf-java:${protobufVersion}"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(JavaExec).configureEach {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
+}
+
+test { useJUnitPlatform() }
+
+tasks.register('exportVanillaModels', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.kizuna.playeranimation.mobs.VanillaModelExport'
+    args layout.buildDirectory.file('vanilla-models.json').get().asFile.path
+}
+
+sourceSets.main.proto {
+    srcDirs = [kpaProtoDir]
+    include 'kizuna/playeranimation/v1/entity_animation.proto'
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:${protobufVersion}" }
+    generateProtoTasks {
+        ofSourceSet('main').configureEach { task ->
+            task.generateDescriptorSet = true
+            task.descriptorSetOptions.path = layout.buildDirectory.file('descriptors/entity-animation-v1.desc').get().asFile.path
+            task.descriptorSetOptions.includeSourceInfo = true
+        }
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+jar { from('LICENSE') }
+
+tasks.register('protocolZip', Zip) {
+    dependsOn tasks.named('generateProto')
+    archiveClassifier = 'proto'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(kpaProtoDir) { include 'kizuna/playeranimation/v1/entity_animation.proto' }
+    from(layout.buildDirectory.file('descriptors/entity-animation-v1.desc')) { into 'descriptors' }
+    from('LICENSE')
+}
+
+tasks.named('build') { dependsOn tasks.named('protocolZip') }
+
+tasks.register('checkMobGeometry', Exec) {
+    dependsOn tasks.named('exportVanillaModels')
+    commandLine 'python3', 'scripts/test_mob_geometry.py'
+}
+tasks.named('check') { dependsOn tasks.named('checkMobGeometry') }
+
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+    clientTest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+
+loom {
+    mods {
+        kizuna_players_animation_mobs { sourceSet sourceSets.main }
+        kpa_mobs_gametest { sourceSet sourceSets.gametest }
+        kpa_mobs_client_test { sourceSet sourceSets.clientTest }
+    }
+    runs {
+        gametest {
+            server()
+            source sourceSets.gametest
+            runDir 'build/gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=../gametest-results.xml'
+        }
+        clientTest {
+            client()
+            source sourceSets.clientTest
+            runDir 'build/clienttest'
+            programArgs '--quickPlaySingleplayer', 'animation-mob-test', '--width', '1280', '--height', '960'
+            vmArg '-Dkpa.mobs.clientTest.report=../clienttest-results.txt'
+        }
+    }
+}
+
+tasks.register('prepareClientTestWorld', Copy) {
+    dependsOn tasks.named('runGametest')
+    from layout.buildDirectory.dir('gametest/world')
+    into layout.buildDirectory.dir('clienttest/saves/animation-mob-test')
+    exclude 'session.lock'
+}
+tasks.named('runClientTest') {
+    dependsOn tasks.named('prepareClientTestWorld')
+    def report = layout.buildDirectory.file('clienttest-results.txt')
+    doFirst { report.get().asFile.text = 'success=false\n' }
+    doLast {
+        if (!report.get().asFile.text.startsWith('success=true')) {
+            throw new GradleException("客户端验收失败，查看 ${report.get().asFile}")
+        }
+    }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "kizuna_players_animation_mobs",
+  "version": "${version}",
+  "name": "Kizuna Players Animation Mobs Addon",
+  "description": "把原版类人生物接入 Kizuna Players Animation 的 24 骨蒙皮渲染",
+  "authors": ["Kizunad"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.kizuna.playeranimation.mobs.MobAnimationServer"],
+    "client": ["dev.kizuna.playeranimation.mobs.MobAnimationClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*",
+    "kizuna_players_animation": "*"
+  }
+}
