@@ -121,7 +121,8 @@ def append_cube(bones, source, model_name, width, height, part=None, mapping=Non
     def unproject(p):
         return [sum((p[i]-origin[i])*column[i] for i in range(3)) for column in columns]
     quads = [source["vertices"][i:i+4] for i in range(0,len(source["vertices"]),4)]
-    inflation = max(abs(min(v["position"][0] for v in source["vertices"])-source_low[0]), 0)
+    # 女巫鼻痣使用负 dilation；保留符号才能还原尺寸和 UV，而不是反向放大。
+    inflation = source_low[0] - min(v["position"][0] for v in source["vertices"])
     for bone, seg_low, seg_high in boxes(part, low, high):
         faces = {}
         for face, unit in FACES.items():
@@ -149,6 +150,13 @@ def append_cube(bones, source, model_name, width, height, part=None, mapping=Non
                 "inflate": round(inflation,6), "inflate_origin": json_origin(low,high),
                 "inflate_size": clean([high[i]-low[i] for i in range(3)]), "part": part,
                 "source": f'{model_name}:{source["part"]}:{source["index"]}', "uv": faces}
+        if inflation < 0:
+            # PA 的 inflate 表示外扩；原版收缩先烘焙成实际尺寸，逐面 UV 保持原值。
+            contracted_low = tuple(v - inflation for v in seg_low)
+            contracted_high = tuple(v + inflation for v in seg_high)
+            cube["origin"] = json_origin(contracted_low, contracted_high)
+            cube["size"] = clean([contracted_high[i] - contracted_low[i] for i in range(3)])
+            cube["inflate"] = 0
         m = source["transform"]
         if mapping is None and any(abs(m[i]-v)>1e-5 for i,v in ((0,1),(5,1),(10,1),(1,0),(2,0),(4,0),(6,0),(8,0),(9,0))):
             ry = math.atan2(-m[2], math.hypot(m[0],m[1]))
@@ -187,7 +195,7 @@ def geometry(name, sources, template):
             for suffix in ("forearm","hand","thumb","fingers_a","fingers_b","item"):
                 bones[side+"_"+suffix]["pivot"][0] = -mid
         append_cube(bones,source,model_name,64,height)
-    if name == "villager":
+    if name in ("villager", "witch"):
         arms = [s for s in cubes if s["part"] == "arms"]
         for source in arms:
             if source["index"] < 2:
@@ -222,7 +230,7 @@ def main():
     template = next(g for g in template_doc["minecraft:geometry"] if g["description"]["identifier"] == "geometry.player.classic")
     sources = json.loads(args.vanilla_models.read_text())
     names = ("zombie","skeleton","wither_skeleton","piglin","villager","illager","zombie_villager",
-             "drowned","drowned_overlay","stray_overlay")
+             "drowned","drowned_overlay","stray_overlay","witch")
     document = {"format_version":"1.12.0","minecraft:geometry":[geometry(n,sources,template) for n in names]}
     content = json.dumps(document,ensure_ascii=False,indent=2)+"\n"
     if args.check:

@@ -18,6 +18,7 @@ import net.minecraft.client.render.entity.model.PiglinEntityModel;
 import net.minecraft.client.render.entity.model.SkeletonEntityModel;
 import net.minecraft.client.render.entity.model.VillagerResemblingModel;
 import net.minecraft.client.render.entity.model.ZombieVillagerEntityModel;
+import net.minecraft.client.render.entity.model.WitchEntityModel;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -48,6 +49,7 @@ public final class VanillaModelExport {
         models.put("villager", TexturedModelData.of(VillagerResemblingModel.getModelData(),
                 TEXTURE_WIDTH, MODERN_HEIGHT));
         models.put("illager", IllagerEntityModel.getTexturedModelData());
+        models.put("witch", WitchEntityModel.getTexturedModelData());
         models.put("zombie_villager", ZombieVillagerEntityModel.getTexturedModelData());
         models.put("drowned", DrownedEntityModel.getTexturedModelData(Dilation.NONE));
         models.put("drowned_overlay", DrownedEntityModel.getTexturedModelData(new Dilation(OVERLAY_DILATION)));

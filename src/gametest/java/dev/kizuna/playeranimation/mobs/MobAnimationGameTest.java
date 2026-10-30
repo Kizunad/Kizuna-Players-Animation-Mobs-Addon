@@ -8,8 +8,49 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 
 public final class MobAnimationGameTest implements FabricGameTest {
+    private static final int ELAPSED_TICKS = 4;
+
+    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
+    public void vindicatorActionKeepsEquipmentAndOriginalStart(TestContext context) {
+        // 正式同步入口使用卫道士、真实装备和历史起点，停止后不再补发旧功法。
+        var entity = context.spawnMob(EntityType.VINDICATOR, new BlockPos(0, 1, 0));
+        entity.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
+        entity.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+        entity.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
+        long start = Math.max(0, context.getWorld().getTime() - ELAPSED_TICKS);
+        String requestId = MobAnimationServer.playFrom(entity, "attack_main", start);
+        var request = MobAnimationServer.snapshot(entity).get(0);
+        context.assertTrue(request.getRequestId().equals(requestId), "同步请求身份丢失");
+        context.assertTrue(request.getPlay().getStartTick() == start, "历史起点被重置");
+        context.assertTrue(entity.getMainHandStack().isOf(Items.IRON_AXE), "动画替换了主手装备");
+        context.assertTrue(entity.getOffHandStack().isOf(Items.SHIELD), "动画替换了副手装备");
+        MobAnimationServer.stop(entity, "attack_main");
+        context.assertTrue(MobAnimationServer.snapshot(entity).isEmpty(), "停止后仍有同步请求");
+        context.complete();
+    }
+
+    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
+    public void merchantInteractionStartsAndStopsPaAtBoundary(TestContext context) {
+        // 客户关系由服务端权威持有，旁观客户端通过显式播放与停止看到交易动作。
+        var merchant = context.spawnMob(EntityType.VILLAGER, new BlockPos(0, 1, 0));
+        var customer = context.createMockCreativeServerPlayerInWorld();
+        try {
+            merchant.setCustomer(customer);
+            var request = MobAnimationServer.snapshot(merchant).get(0).getPlay();
+            context.assertTrue(request.getAnimationId().equals("use_item") && request.getLoop(), "交易未播放循环交互");
+            merchant.setCustomer(null);
+            context.assertTrue(MobAnimationServer.snapshot(merchant).isEmpty(), "交易结束后未恢复自动层");
+            context.complete();
+        } finally {
+            context.getWorld().getServer().getPlayerManager().remove(customer);
+        }
+    }
+
     @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
     public void playTrackingQueueAndUnloadCleanup(TestContext context) throws ReflectiveOperationException {
         // 通过正式服务端入口登记，再触发 Fabric 追踪与实体卸载生命周期。

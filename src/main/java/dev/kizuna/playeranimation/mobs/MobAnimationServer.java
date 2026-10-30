@@ -70,17 +70,43 @@ public final class MobAnimationServer implements ModInitializer {
     }
 
     public static String play(LivingEntity entity, String animation) {
-        return play(entity, animation, LoopMode.RESOURCE);
+        // 默认动作按世界当前 tick 开始。
+        return playFrom(entity, animation, entity.getWorld().getTime());
+    }
+
+    public static String playFrom(LivingEntity entity, String animation, long startTick) {
+        // 功法重试及迟到效果保留原始起点，不把已过去的动作重新播一遍。
+        return play(entity, animation, LoopMode.RESOURCE, startTick);
+    }
+
+    public static String repeat(LivingEntity entity, String animation) {
+        // 持续交互按资源时长循环，由交互结束显式停止。
+        return play(entity, animation, LoopMode.REPEAT, entity.getWorld().getTime());
+    }
+
+    public static List<EntityAnimationRequest> snapshot(LivingEntity entity) {
+        // 返回不可变的原始同步请求，诊断与宿主验证不会修改活动播放。
+        requireServerThread(entity);
+        return STATE.snapshot(entity.getUuid());
     }
 
     private static String play(LivingEntity entity, String animation, LoopMode loopMode) {
+        // 命令路径以当前世界时间起播。
+        return play(entity, animation, loopMode, entity.getWorld().getTime());
+    }
+
+    private static String play(LivingEntity entity, String animation, LoopMode loopMode, long startTick) {
+        // 先验证再登记，非法起点不能改变追踪补发状态。
         requireServerThread(entity);
         validateAnimation(animation);
+        if (startTick < 0 || startTick > entity.getWorld().getTime()) {
+            throw new IllegalArgumentException("起播 tick 必须位于当前世界时间以内");
+        }
         String requestId = UUID.randomUUID().toString();
         Play.Builder play = Play.newBuilder()
                 .setEntityId(entity.getId())
                 .setAnimationId(animation)
-                .setStartTick(entity.getWorld().getTime());
+                .setStartTick(startTick);
         if (loopMode == LoopMode.REPEAT) {
             play.setLoop(true /* loop */);
         } else if (loopMode == LoopMode.ONCE) {

@@ -7,6 +7,7 @@
   "authors": ["Kizunad"],
   "license": "MIT",
   "environment": "*",
+  "mixins": ["kpa_mobs.mixins.json"],
   "entrypoints": {
     "main": ["dev.kizuna.playeranimation.mobs.MobAnimationServer"],
     "client": ["dev.kizuna.playeranimation.mobs.MobAnimationClient"]

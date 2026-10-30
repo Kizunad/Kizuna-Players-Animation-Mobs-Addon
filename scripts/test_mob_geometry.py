@@ -59,6 +59,10 @@ class VanillaGeometryTest(unittest.TestCase):
                     model,part,index = source_id.split(":")
                     source = next(c for c in self.sources[model] if c["part"] == part and c["index"] == int(index))
                     size = [source["max"][i]-source["min"][i] for i in range(3)]
+                    inflation = source["min"][0] - min(v["position"][0] for v in source["vertices"])
+                    if inflation < 0:
+                        # 女巫鼻痣的收缩已烘焙，体积应等于原版实际顶点围成的体积。
+                        size = [value + 2 * inflation for value in size]
                     self.assertAlmostEqual(size[0]*size[1]*size[2],volume,places=4,msg=source_id)
 
     def test_distinct_head_details_and_overlay_dilation(self):
@@ -66,6 +70,8 @@ class VanillaGeometryTest(unittest.TestCase):
         def head(name):
             return next(b for b in geometries[name]["bones"] if b["name"] == "head")["cubes"]
         self.assertTrue(any(c["part"] == "head/nose" for c in head("villager")))
+        self.assertTrue(any(c["part"] == "head/nose/mole" for c in head("witch")))
+        self.assertTrue(any(c["part"].startswith("head/hat") for c in head("witch")))
         ears = [c for c in head("piglin") if c["part"].endswith("_ear")]
         self.assertEqual(2,len(ears))
         self.assertEqual({-30,30},{round(c["rotation"][2]) for c in ears})

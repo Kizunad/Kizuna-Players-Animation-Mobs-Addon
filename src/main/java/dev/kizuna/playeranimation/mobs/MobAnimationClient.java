@@ -8,6 +8,7 @@ import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.EntityAnim
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.RegisterGeometry;
 import java.util.List;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.loader.api.FabricLoader;
@@ -23,10 +24,13 @@ public final class MobAnimationClient implements ClientModInitializer {
     public static final String ID = MobAnimationPackets.MOD_ID;
     public static final Logger LOG = LoggerFactory.getLogger(ID);
     private static PlayerAnimationHost host;
+    private static final MobAutomaticAnimations AUTOMATIC = new MobAutomaticAnimations();
 
     @Override
     public void onInitializeClient() {
+        // 只读取客户端已同步的状态，自动移动不增加服务端网络流量。
         host = findHost();
+        ClientTickEvents.END_CLIENT_TICK.register(AUTOMATIC::tick);
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
                 .registerReloadListener(new MobGeometryAssets());
         ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.PLAY,
@@ -65,7 +69,8 @@ public final class MobAnimationClient implements ClientModInitializer {
         }
     }
 
-    private static void exchange(EntityAnimationRequest request) {
+    static void exchange(EntityAnimationRequest request) {
+        // 自动层与网络显式动作都必须由客户端主线程交给同一 PA 入口。
         EntityAnimationResponse response;
         try {
             response = EntityAnimationResponse.parseFrom(host.exchange(request.toByteArray()));
@@ -95,5 +100,10 @@ public final class MobAnimationClient implements ClientModInitializer {
 
     static PlayerAnimationHost host() {
         return host;
+    }
+
+    static void resetAutomatic() {
+        // 重载后重新采集现存实体。
+        AUTOMATIC.reset();
     }
 }

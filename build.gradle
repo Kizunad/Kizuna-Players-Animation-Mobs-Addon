@@ -137,3 +137,13 @@ tasks.named('runClientTest') {
         }
     }
 }
+
+// 开发验收包含真实 Meridian 类人施放链；正式附属仍只依赖 PA 的公开字节入口。
+apply from: '../Kizuna-Meridian-Mod-Framework/scripts/full-assembly.gradle'
+dependencies {
+    // 本仓没有 Framework 源码依赖，开发装配显式补齐两个非 Fabric 基础库。
+    localRuntime 'org.tomlj:tomlj:1.1.1'
+    localRuntime files('../Kizuna-Meridian-Mod-Framework/server/build/libs/kizuna-meridian-mod-framework-server-0.1.0-SNAPSHOT.jar')
+    localRuntime files('../Kizuna-Meridian-Mod-Framework/client/build/libs/kizuna-meridian-mod-framework-client-0.1.0-SNAPSHOT.jar')
+    localRuntime files('../Kizuna-Meridian-Human-Addon/client/build/libs/kizuna-meridian-human-addon-client-0.1.0-SNAPSHOT.jar')
+}
