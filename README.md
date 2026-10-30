@@ -27,7 +27,7 @@ Meridian 的叩门、破门、撞门由宿主经本附属播放 PA 专属片段�
 ./gradlew runClientTest
 ```
 
-默认从相邻 PA 源码读取唯一 proto，并使用其本地构建的 `0.1.0-SNAPSHOT` JAR。其他位置使用 `./gradlew -PkpaDir="/path/to/Kizuna-Players-Animation" test build`；该 PA 目录须已构建且包含实体字节入口。本次依赖本地源码，尚未锁定到已发布版本。
+PA 以组合构建接入：默认从相邻 PA 源码读取唯一 proto 并随本仓一起构建，无需事先单独打包。相邻目录由 Framework 的装配清单给出，其他位置使用 `./gradlew -Pkizuna.dir.players-animation="/path/to/Kizuna-Players-Animation" test build`；该 PA 源码须包含实体字节入口。版本号取 Framework 的 `scripts/libs.versions.toml`。本次依赖本地源码，尚未锁定到已发布版本。
 
 `runClientTest` 使用相邻 Meridian 完整开发装配，先执行服务端 GameTest，再加载测试世界。
 截图保存在 `build/mob-screens/`，包含七种生人、卫道士走跑、举斧、挥砍、双手装备、盔甲、旗帜，

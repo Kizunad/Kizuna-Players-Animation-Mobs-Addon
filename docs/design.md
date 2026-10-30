@@ -2,7 +2,7 @@
 
 ## 消息与职责
 
-PA 的 `src/main/proto/kizuna/playeranimation/v1/entity_animation.proto` 是唯一协议源，本仓通过 `-PkpaDir` 直接读取并生成 v1 类型，不保存协议副本。`RegisterGeometry` 注册几何；`Play` 提交显式动作；`Stop` 停止显式动作；`Clear` 清理单个实体的两层状态；`Automatic` 提交客户端选择的移动底层和原版动作替代片段。每次请求都由 `EntityAnimationResponse` 返回明确错误码。
+PA 的 `src/main/proto/kizuna/playeranimation/v1/entity_animation.proto` 是唯一协议源，本仓经组合构建（`-Pkizuna.dir.players-animation` 可改指目录）直接读取并生成 v1 类型，不保存协议副本。`RegisterGeometry` 注册几何；`Play` 提交显式动作；`Stop` 停止显式动作；`Clear` 清理单个实体的两层状态；`Automatic` 提交客户端选择的移动底层和原版动作替代片段。每次请求都由 `EntityAnimationResponse` 返回明确错误码。
 
 PA 公开的 Fabric 入口 `kizuna_player_animation` 只有 `exchange(byte[])`。PA 在入口内部校验协议、保存注册几何、驱动实体播放状态，并在自己的 `LivingEntityRenderer` 接线里使用当前实体姿态、注册几何和原版渲染器提供的纹理缓冲绘制蒙皮网格。新仓不 import `PlayerAnimationClient`、`PlayerMeshRenderer`、`SkinnedMesh` 或其他 PA 内部类。
 
