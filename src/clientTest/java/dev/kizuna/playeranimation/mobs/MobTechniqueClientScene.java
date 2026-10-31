@@ -67,7 +67,7 @@ final class MobTechniqueClientScene {
                     .collect(Collectors.toSet());
             var source = server.createCommandSourceStack().withLevel(world).withPosition(position);
             int result = server.getCommands().performPrefixedCommand(source,
-                    "meridian humanoid summon vindicator true_qi ~ ~ ~");
+                    "meridian humanoid spawn vindicator true_qi ~ ~ ~");
             if (result != 1) {
                 throw new IllegalStateException("真炁卫道士出生命令失败");
             }
