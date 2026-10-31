@@ -12,10 +12,10 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.resource.ResourceType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.packs.PackType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +31,7 @@ public final class MobAnimationClient implements ClientModInitializer {
         // 只读取客户端已同步的状态，自动移动不增加服务端网络流量。
         host = findHost();
         ClientTickEvents.END_CLIENT_TICK.register(AUTOMATIC::tick);
-        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
+        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES)
                 .registerReloadListener(new MobGeometryAssets());
         ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.PLAY,
                 (client, handler, buffer, sender) -> receive(client, handler, buffer));
@@ -54,13 +54,13 @@ public final class MobAnimationClient implements ClientModInitializer {
         exchange(request);
     }
 
-    private static void receive(MinecraftClient client,
-                                ClientPlayNetworkHandler handler,
-                                PacketByteBuf buffer) {
+    private static void receive(Minecraft client,
+                                ClientPacketListener handler,
+                                FriendlyByteBuf buffer) {
         try {
             EntityAnimationRequest request = MobAnimationPackets.read(buffer, EntityAnimationRequest.parser());
             client.execute(() -> {
-                if (client.getNetworkHandler() == handler) {
+                if (client.getConnection() == handler) {
                     exchange(request);
                 }
             });

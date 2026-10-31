@@ -23,17 +23,17 @@ import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.command.CommandSource;
-import net.minecraft.command.argument.EntityArgumentType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 /** 服务端按追踪关系同步任意 LivingEntity 的 PA 动画。 */
 public final class MobAnimationServer implements ModInitializer {
@@ -47,18 +47,18 @@ public final class MobAnimationServer implements ModInitializer {
     public void onInitialize() {
         EntityTrackingEvents.START_TRACKING.register((entity, viewer) -> {
             if (entity instanceof LivingEntity living) {
-                PENDING.add(new TrackingPair(living.getUuid(), viewer.getUuid()));
+                PENDING.add(new TrackingPair(living.getUUID(), viewer.getUUID()));
             }
         });
         EntityTrackingEvents.STOP_TRACKING.register((entity, viewer) ->
-                PENDING.remove(new TrackingPair(entity.getUuid(), viewer.getUuid())));
+                PENDING.remove(new TrackingPair(entity.getUUID(), viewer.getUUID())));
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
             if (entity instanceof LivingEntity living) {
-                clearEntity(living.getUuid());
+                clearEntity(living.getUUID());
             }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> server.execute(() -> {
-            UUID viewer = handler.player.getUuid();
+            UUID viewer = handler.player.getUUID();
             PENDING.removeIf(pair -> pair.viewer().equals(viewer));
         }));
         ServerTickEvents.END_SERVER_TICK.register(MobAnimationServer::tick);
@@ -71,7 +71,7 @@ public final class MobAnimationServer implements ModInitializer {
 
     public static String play(LivingEntity entity, String animation) {
         // 默认动作按世界当前 tick 开始。
-        return playFrom(entity, animation, entity.getWorld().getTime());
+        return playFrom(entity, animation, entity.level().getGameTime());
     }
 
     public static String playFrom(LivingEntity entity, String animation, long startTick) {
@@ -81,25 +81,25 @@ public final class MobAnimationServer implements ModInitializer {
 
     public static String repeat(LivingEntity entity, String animation) {
         // 持续交互按资源时长循环，由交互结束显式停止。
-        return play(entity, animation, LoopMode.REPEAT, entity.getWorld().getTime());
+        return play(entity, animation, LoopMode.REPEAT, entity.level().getGameTime());
     }
 
     public static List<EntityAnimationRequest> snapshot(LivingEntity entity) {
         // 返回不可变的原始同步请求，诊断与宿主验证不会修改活动播放。
         requireServerThread(entity);
-        return STATE.snapshot(entity.getUuid());
+        return STATE.snapshot(entity.getUUID());
     }
 
     private static String play(LivingEntity entity, String animation, LoopMode loopMode) {
         // 命令路径以当前世界时间起播。
-        return play(entity, animation, loopMode, entity.getWorld().getTime());
+        return play(entity, animation, loopMode, entity.level().getGameTime());
     }
 
     private static String play(LivingEntity entity, String animation, LoopMode loopMode, long startTick) {
         // 先验证再登记，非法起点不能改变追踪补发状态。
         requireServerThread(entity);
         validateAnimation(animation);
-        if (startTick < 0 || startTick > entity.getWorld().getTime()) {
+        if (startTick < 0 || startTick > entity.level().getGameTime()) {
             throw new IllegalArgumentException("起播 tick 必须位于当前世界时间以内");
         }
         String requestId = UUID.randomUUID().toString();
@@ -118,7 +118,7 @@ public final class MobAnimationServer implements ModInitializer {
                 .setPlay(operation)
                 .build();
         checkSize(request);
-        STATE.play(entity.getUuid(), request);
+        STATE.play(entity.getUUID(), request);
         broadcast(entity, MobAnimationPackets.PLAY, request);
         return requestId;
     }
@@ -145,7 +145,7 @@ public final class MobAnimationServer implements ModInitializer {
                 .setStop(operation)
                 .build();
         checkSize(request);
-        STATE.stop(entity.getUuid(), animation);
+        STATE.stop(entity.getUUID(), animation);
         broadcast(entity, MobAnimationPackets.STOP, request);
         return requestId;
     }
@@ -153,8 +153,8 @@ public final class MobAnimationServer implements ModInitializer {
     private static void tick(MinecraftServer server) {
         for (TrackingPair pair : Set.copyOf(PENDING)) {
             LivingEntity target = findEntity(server, pair.target());
-            ServerPlayerEntity viewer = server.getPlayerManager().getPlayer(pair.viewer());
-            if (target == null || viewer == null || !viewer.networkHandler.isConnectionOpen()
+            ServerPlayer viewer = server.getPlayerList().getPlayer(pair.viewer());
+            if (target == null || viewer == null || !viewer.connection.isAcceptingMessages()
                     || (target != viewer && !PlayerLookup.tracking(target).contains(viewer))) {
                 PENDING.remove(pair);
                 continue;
@@ -169,31 +169,31 @@ public final class MobAnimationServer implements ModInitializer {
         }
     }
 
-    private static void broadcast(LivingEntity target, Identifier channel, MessageLite message) {
-        Set<ServerPlayerEntity> viewers = new HashSet<>(PlayerLookup.tracking(target));
-        if (target instanceof ServerPlayerEntity player) {
+    private static void broadcast(LivingEntity target, ResourceLocation channel, MessageLite message) {
+        Set<ServerPlayer> viewers = new HashSet<>(PlayerLookup.tracking(target));
+        if (target instanceof ServerPlayer player) {
             viewers.add(player);
         }
-        for (ServerPlayerEntity viewer : viewers) {
-            if (!viewer.networkHandler.isConnectionOpen() || !ready(viewer)) {
-                PENDING.add(new TrackingPair(target.getUuid(), viewer.getUuid()));
+        for (ServerPlayer viewer : viewers) {
+            if (!viewer.connection.isAcceptingMessages() || !ready(viewer)) {
+                PENDING.add(new TrackingPair(target.getUUID(), viewer.getUUID()));
                 continue;
             }
             send(viewer, channel, message);
         }
     }
 
-    private static void send(ServerPlayerEntity viewer, Identifier channel, MessageLite message) {
+    private static void send(ServerPlayer viewer, ResourceLocation channel, MessageLite message) {
         ServerPlayNetworking.send(viewer, channel, MobAnimationPackets.write(message));
     }
 
-    private static boolean ready(ServerPlayerEntity viewer) {
+    private static boolean ready(ServerPlayer viewer) {
         return ServerPlayNetworking.canSend(viewer, MobAnimationPackets.PLAY)
                 && ServerPlayNetworking.canSend(viewer, MobAnimationPackets.STOP);
     }
 
     private static LivingEntity findEntity(MinecraftServer server, UUID id) {
-        for (ServerWorld world : server.getWorlds()) {
+        for (ServerLevel world : server.getAllLevels()) {
             Entity entity = world.getEntity(id);
             if (entity instanceof LivingEntity living) {
                 return living;
@@ -207,30 +207,30 @@ public final class MobAnimationServer implements ModInitializer {
         PENDING.removeIf(pair -> pair.target().equals(id));
     }
 
-    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(CommandManager.literal("kizuna_anim_mob")
-                .requires(source -> source.hasPermissionLevel(COMMAND_PERMISSION_LEVEL))
-                .then(CommandManager.literal("play")
-                        .then(CommandManager.argument("targets", EntityArgumentType.entities())
-                                .then(CommandManager.argument("animation", StringArgumentType.word())
-                                        .suggests((context, builder) -> CommandSource.suggestMatching(
+    private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("kizuna_anim_mob")
+                .requires(source -> source.hasPermission(COMMAND_PERMISSION_LEVEL))
+                .then(Commands.literal("play")
+                        .then(Commands.argument("targets", EntityArgument.entities())
+                                .then(Commands.argument("animation", StringArgumentType.word())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
                                                 List.of("walk", "run", "dodge_forward", "meditate"), builder))
                                         .executes(context -> playTargets(context, LoopMode.RESOURCE))
-                                        .then(CommandManager.argument("loop", BoolArgumentType.bool())
+                                        .then(Commands.argument("loop", BoolArgumentType.bool())
                                                 .executes(context -> {
                                                     boolean loop = BoolArgumentType.getBool(context, "loop");
                                                     LoopMode mode = loop ? LoopMode.REPEAT : LoopMode.ONCE;
                                                     return playTargets(context, mode);
                                                 })))))
-                .then(CommandManager.literal("stop")
-                        .then(CommandManager.argument("targets", EntityArgumentType.entities())
+                .then(Commands.literal("stop")
+                        .then(Commands.argument("targets", EntityArgument.entities())
                                 .executes(MobAnimationServer::stopTargets))));
     }
 
-    private static int playTargets(CommandContext<ServerCommandSource> context, LoopMode loopMode)
+    private static int playTargets(CommandContext<CommandSourceStack> context, LoopMode loopMode)
             throws CommandSyntaxException {
         String animation = StringArgumentType.getString(context, "animation");
-        Collection<? extends Entity> targets = EntityArgumentType.getEntities(context, "targets");
+        Collection<? extends Entity> targets = EntityArgument.getEntities(context, "targets");
         int count = 0;
         for (Entity target : targets) {
             if (!(target instanceof LivingEntity living)) {
@@ -240,17 +240,17 @@ public final class MobAnimationServer implements ModInitializer {
             count++;
         }
         if (count == 0) {
-            context.getSource().sendError(Text.literal("目标中没有 LivingEntity"));
+            context.getSource().sendFailure(Component.literal("目标中没有 LivingEntity"));
             return 0;
         }
         int targetCount = count;
-        context.getSource().sendFeedback(() -> Text.literal("已播放动画 " + animation + "，目标 " + targetCount + " 个"),
+        context.getSource().sendSuccess(() -> Component.literal("已播放动画 " + animation + "，目标 " + targetCount + " 个"),
                 false /* broadcastToOps */);
         return count;
     }
 
-    private static int stopTargets(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
-        Collection<? extends Entity> targets = EntityArgumentType.getEntities(context, "targets");
+    private static int stopTargets(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        Collection<? extends Entity> targets = EntityArgument.getEntities(context, "targets");
         int count = 0;
         for (Entity target : targets) {
             if (target instanceof LivingEntity living) {
@@ -259,7 +259,7 @@ public final class MobAnimationServer implements ModInitializer {
             }
         }
         int targetCount = count;
-        context.getSource().sendFeedback(() -> Text.literal("已停止动画，目标 " + targetCount + " 个"),
+        context.getSource().sendSuccess(() -> Component.literal("已停止动画，目标 " + targetCount + " 个"),
                 false /* broadcastToOps */);
         return count;
     }
@@ -278,7 +278,7 @@ public final class MobAnimationServer implements ModInitializer {
 
     private static void requireServerThread(LivingEntity entity) {
         MinecraftServer server = entity.getServer();
-        if (server == null || !server.isOnThread()) {
+        if (server == null || !server.isSameThread()) {
             throw new IllegalStateException("生物动画同步必须在服务端主线程调用");
         }
     }

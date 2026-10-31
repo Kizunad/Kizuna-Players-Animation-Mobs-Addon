@@ -4,64 +4,64 @@ import java.lang.reflect.Field;
 import java.util.Set;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
-import net.minecraft.entity.EntityType;
-import net.minecraft.test.GameTest;
-import net.minecraft.test.TestContext;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 public final class MobAnimationGameTest implements FabricGameTest {
     private static final int ELAPSED_TICKS = 4;
 
-    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
-    public void vindicatorActionKeepsEquipmentAndOriginalStart(TestContext context) {
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void vindicatorActionKeepsEquipmentAndOriginalStart(GameTestHelper context) {
         // 正式同步入口使用卫道士、真实装备和历史起点，停止后不再补发旧功法。
-        var entity = context.spawnMob(EntityType.VINDICATOR, new BlockPos(0, 1, 0));
-        entity.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
-        entity.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
-        entity.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
-        long start = Math.max(0, context.getWorld().getTime() - ELAPSED_TICKS);
+        var entity = context.spawnWithNoFreeWill(EntityType.VINDICATOR, new BlockPos(0, 1, 0));
+        entity.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
+        entity.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+        entity.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
+        long start = Math.max(0, context.getLevel().getGameTime() - ELAPSED_TICKS);
         String requestId = MobAnimationServer.playFrom(entity, "attack_main", start);
         var request = MobAnimationServer.snapshot(entity).get(0);
         context.assertTrue(request.getRequestId().equals(requestId), "同步请求身份丢失");
         context.assertTrue(request.getPlay().getStartTick() == start, "历史起点被重置");
-        context.assertTrue(entity.getMainHandStack().isOf(Items.IRON_AXE), "动画替换了主手装备");
-        context.assertTrue(entity.getOffHandStack().isOf(Items.SHIELD), "动画替换了副手装备");
+        context.assertTrue(entity.getMainHandItem().is(Items.IRON_AXE), "动画替换了主手装备");
+        context.assertTrue(entity.getOffhandItem().is(Items.SHIELD), "动画替换了副手装备");
         MobAnimationServer.stop(entity, "attack_main");
         context.assertTrue(MobAnimationServer.snapshot(entity).isEmpty(), "停止后仍有同步请求");
-        context.complete();
+        context.succeed();
     }
 
-    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
-    public void merchantInteractionStartsAndStopsPaAtBoundary(TestContext context) {
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void merchantInteractionStartsAndStopsPaAtBoundary(GameTestHelper context) {
         // 客户关系由服务端权威持有，旁观客户端通过显式播放与停止看到交易动作。
-        var merchant = context.spawnMob(EntityType.VILLAGER, new BlockPos(0, 1, 0));
-        var customer = context.createMockCreativeServerPlayerInWorld();
+        var merchant = context.spawnWithNoFreeWill(EntityType.VILLAGER, new BlockPos(0, 1, 0));
+        var customer = context.makeMockServerPlayerInLevel();
         try {
-            merchant.setCustomer(customer);
+            merchant.setTradingPlayer(customer);
             var request = MobAnimationServer.snapshot(merchant).get(0).getPlay();
             context.assertTrue(request.getAnimationId().equals("use_item") && request.getLoop(), "交易未播放循环交互");
-            merchant.setCustomer(null);
+            merchant.setTradingPlayer(null);
             context.assertTrue(MobAnimationServer.snapshot(merchant).isEmpty(), "交易结束后未恢复自动层");
-            context.complete();
+            context.succeed();
         } finally {
-            context.getWorld().getServer().getPlayerManager().remove(customer);
+            context.getLevel().getServer().getPlayerList().remove(customer);
         }
     }
 
-    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
-    public void playTrackingQueueAndUnloadCleanup(TestContext context) throws ReflectiveOperationException {
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void playTrackingQueueAndUnloadCleanup(GameTestHelper context) throws ReflectiveOperationException {
         // 通过正式服务端入口登记，再触发 Fabric 追踪与实体卸载生命周期。
-        var entity = context.spawnMob(EntityType.ZOMBIE, new BlockPos(0, 1, 0));
-        var viewer = context.createMockCreativeServerPlayerInWorld();
-        var server = context.getWorld().getServer();
+        var entity = context.spawnWithNoFreeWill(EntityType.ZOMBIE, new BlockPos(0, 1, 0));
+        var viewer = context.makeMockServerPlayerInLevel();
+        var server = context.getLevel().getServer();
         MobAnimationSyncState state = (MobAnimationSyncState) field("STATE").get(null);
         Set<?> pending = (Set<?>) field("PENDING").get(null);
         try {
             String id = MobAnimationServer.play(entity, "dodge_forward");
-            var snapshot = state.snapshot(entity.getUuid());
+            var snapshot = state.snapshot(entity.getUUID());
             context.assertTrue(snapshot.size() == 1, "播放必须登记活动请求");
             context.assertTrue(snapshot.get(0).getRequestId().equals(id), "追踪补发必须保留请求 ID");
             context.assertTrue(snapshot.get(0).getPlay().getEntityId() == entity.getId(), "必须使用实际运行时 ID");
@@ -74,13 +74,13 @@ public final class MobAnimationGameTest implements FabricGameTest {
             context.assertTrue(pending.size() == before, "结束追踪必须取消补发");
             EntityTrackingEvents.START_TRACKING.invoker().onStartTracking(entity, viewer);
             entity.discard();
-            context.runAtTick(1, () -> {
-                context.assertTrue(state.snapshot(entity.getUuid()).isEmpty(), "卸载必须清理活动请求");
+            context.runAtTickTime(1, () -> {
+                context.assertTrue(state.snapshot(entity.getUUID()).isEmpty(), "卸载必须清理活动请求");
                 context.assertTrue(pending.size() <= before, "卸载必须清理追踪补发");
-                context.complete();
+                context.succeed();
             });
         } finally {
-            server.getPlayerManager().remove(viewer);
+            server.getPlayerList().remove(viewer);
         }
     }
 

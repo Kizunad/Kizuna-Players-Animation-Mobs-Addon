@@ -5,14 +5,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.OtherClientPlayerEntity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.Arm;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.RemotePlayer;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /** 在真实 PA renderer 中固定主副手命中帧，并覆盖左撇子运行时镜像。 */
 final class DoorBreakerClientCases {
@@ -52,19 +52,19 @@ final class DoorBreakerClientCases {
         return timing.hitSeconds() / timing.durationSeconds();
     }
 
-    static LivingEntity create(MinecraftClient client, String name) {
+    static LivingEntity create(Minecraft client, String name) {
         // 两种玩家只改变原版惯用手读取，其余关节、持物和绘制沿用正式实现。
         if (name.startsWith("vindicator_")) {
-            return EntityType.VINDICATOR.create(client.world);
+            return EntityType.VINDICATOR.create(client.level);
         }
-        Arm mainArm = Arm.RIGHT;
+        HumanoidArm mainArm = HumanoidArm.RIGHT;
         if (name.startsWith("left_player_")) {
-            mainArm = Arm.LEFT;
+            mainArm = HumanoidArm.LEFT;
         }
-        Arm selectedArm = mainArm;
-        return new OtherClientPlayerEntity(client.world, new GameProfile(PLAYER_ID, "PA_door_test")) {
+        HumanoidArm selectedArm = mainArm;
+        return new RemotePlayer(client.level, new GameProfile(PLAYER_ID, "PA_door_test")) {
             @Override
-            public Arm getMainArm() {
+            public HumanoidArm getMainArm() {
                 // 让 PA 的运行时镜像读取真实实体的惯用手契约。
                 return selectedArm;
             }
@@ -74,13 +74,13 @@ final class DoorBreakerClientCases {
     static void equip(LivingEntity actor, String name) {
         // 单独装备出招手，避免闲置盾牌或盔甲遮住叠握与关节。
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            actor.equipStack(slot, ItemStack.EMPTY);
+            actor.setItemSlot(slot, ItemStack.EMPTY);
         }
         EquipmentSlot slot = EquipmentSlot.MAINHAND;
         if (name.endsWith("_off")) {
             slot = EquipmentSlot.OFFHAND;
         }
-        actor.equipStack(slot, new ItemStack(Items.IRON_AXE));
+        actor.setItemSlot(slot, new ItemStack(Items.IRON_AXE));
     }
 
     private DoorBreakerClientCases() {

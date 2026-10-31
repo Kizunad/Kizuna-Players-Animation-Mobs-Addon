@@ -10,14 +10,14 @@ import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Clear;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.EntityAnimationRequest;
 import java.util.HashMap;
 import java.util.Map;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.IllagerEntity;
-import net.minecraft.entity.mob.SpellcastingIllagerEntity;
-import net.minecraft.entity.mob.WitchEntity;
-import net.minecraft.entity.passive.MerchantEntity;
-import net.minecraft.util.Hand;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.AbstractIllager;
+import net.minecraft.world.entity.monster.SpellcasterIllager;
+import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.npc.AbstractVillager;
 
 /** 观察客户端已有实体字段，只向本地 PA 字节入口提交自动层。 */
 final class MobAutomaticAnimations {
@@ -31,21 +31,21 @@ final class MobAutomaticAnimations {
     private static final int BOW_TICKS = 38;
     private static final int INTERACTION_TICKS = 8;
     private final Map<Integer, ActionClock> clocks = new HashMap<>();
-    private ClientWorld world;
+    private ClientLevel world;
 
     private record ActionClock(Activity activity, int startedAt) { }
 
-    void tick(MinecraftClient client) {
+    void tick(Minecraft client) {
         // 世界切换后实体 ID 可复用，自动状态不能跨世界保存。
-        if (world != client.world) {
+        if (world != client.level) {
             clocks.clear();
-            world = client.world;
+            world = client.level;
         }
         if (world == null || client.isPaused()) {
             return;
         }
-        clocks.keySet().removeIf(id -> world.getEntityById(id) == null);
-        for (var entity : world.getEntities()) {
+        clocks.keySet().removeIf(id -> world.getEntity(id) == null);
+        for (var entity : world.entitiesForRendering()) {
             if (entity instanceof LivingEntity living && MobGeometryAssets.supports(living.getType())) {
                 update(living);
             }
@@ -70,14 +70,14 @@ final class MobAutomaticAnimations {
         Activity activity = activity(entity);
         ActionClock clock = clocks.get(entityId);
         if (clock == null || clock.activity() != activity) {
-            clock = new ActionClock(activity, entity.age);
+            clock = new ActionClock(activity, entity.tickCount);
             clocks.put(entityId, clock);
         }
         Gait gait = entity.isSprinting() ? Gait.SPRINTING : Gait.NATURAL;
-        Motion motion = new Motion(posture(entity), entity.limbAnimator.getSpeed(), gait);
+        Motion motion = new Motion(posture(entity), entity.walkAnimation.speed(), gait);
         ActionHand hand = ActionHand.MAIN;
-        if (entity.getActiveHand() == Hand.OFF_HAND
-                || activity == Activity.ATTACK && entity.preferredHand == Hand.OFF_HAND) {
+        if (entity.getUsedItemHand() == InteractionHand.OFF_HAND
+                || activity == Activity.ATTACK && entity.swingingArm == InteractionHand.OFF_HAND) {
             hand = ActionHand.OFF;
         }
         var clips = MobAnimationSelection.select(motion, activity, hand);
@@ -95,17 +95,17 @@ final class MobAutomaticAnimations {
         if (entity.hurtTime > 0) {
             return Activity.HURT;
         }
-        if (entity.handSwinging) {
+        if (entity.swinging) {
             return Activity.ATTACK;
         }
-        if (entity instanceof WitchEntity witch && witch.isDrinking()) {
+        if (entity instanceof Witch witch && witch.isDrinkingPotion()) {
             return Activity.DRINK;
         }
-        if (entity instanceof SpellcastingIllagerEntity caster && caster.isSpellcasting()) {
+        if (entity instanceof SpellcasterIllager caster && caster.isCastingSpell()) {
             return Activity.SPELL;
         }
-        if (entity instanceof IllagerEntity illager) {
-            return switch (illager.getState()) {
+        if (entity instanceof AbstractIllager illager) {
+            return switch (illager.getArmPose()) {
                 case ATTACKING -> Activity.AXE_READY;
                 case CROSSBOW_CHARGE -> Activity.CROSSBOW_CHARGE;
                 case CROSSBOW_HOLD -> Activity.CROSSBOW_HOLD;
@@ -114,7 +114,7 @@ final class MobAutomaticAnimations {
                 default -> Activity.NONE;
             };
         }
-        if (entity instanceof MerchantEntity merchant && merchant.getCustomer() != null) {
+        if (entity instanceof AbstractVillager merchant && merchant.getTradingPlayer() != null) {
             return Activity.TRADE;
         }
         return Activity.NONE;
@@ -122,19 +122,19 @@ final class MobAutomaticAnimations {
 
     private static Posture posture(LivingEntity entity) {
         // 原版同步状态决定支撑方式，移动速度只用于站立或潜行下的步态。
-        if (entity.hasVehicle()) {
+        if (entity.isPassenger()) {
             return Posture.RIDING;
         }
         if (entity.isSleeping()) {
             return Posture.SLEEPING;
         }
-        if (entity.isInSwimmingPose() && entity.isTouchingWater()) {
+        if (entity.isVisuallySwimming() && entity.isInWater()) {
             return Posture.SWIMMING;
         }
-        if (entity.isClimbing() && !entity.isOnGround()) {
+        if (entity.onClimbable() && !entity.onGround()) {
             return Posture.CLIMBING;
         }
-        if (entity.isInSneakingPose()) {
+        if (entity.isCrouching()) {
             return Posture.SNEAKING;
         }
         return Posture.STANDING;
@@ -142,9 +142,9 @@ final class MobAutomaticAnimations {
 
     private static float progress(LivingEntity entity, ActionClock clock) {
         // 保持动作取预备段，持续交互重复现有片段；挥砍直接跟随原版挥手游标。
-        int elapsed = entity.age - clock.startedAt();
+        int elapsed = entity.tickCount - clock.startedAt();
         return switch (clock.activity()) {
-            case ATTACK -> entity.getHandSwingProgress(1) * SWING_END;
+            case ATTACK -> entity.getAttackAnim(1) * SWING_END;
             case AXE_READY -> RAISED_ARM_PROGRESS;
             case CROSSBOW_HOLD -> HELD_ITEM_PROGRESS;
             case CROSSBOW_CHARGE -> Math.min(1, (float) elapsed / CHARGE_TICKS);

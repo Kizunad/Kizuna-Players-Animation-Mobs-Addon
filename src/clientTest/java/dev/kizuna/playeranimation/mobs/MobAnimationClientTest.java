@@ -20,27 +20,27 @@ import java.util.concurrent.CompletableFuture;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.OtherClientPlayerEntity;
-import net.minecraft.client.option.Perspective;
-import net.minecraft.client.util.ScreenshotRecorder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.decoration.ArmorStandEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.PillagerEntity;
-import net.minecraft.entity.mob.WitchEntity;
-import net.minecraft.entity.passive.MerchantEntity;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.entity.mob.ZombieVillagerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.village.VillagerData;
-import net.minecraft.village.VillagerProfession;
-import net.minecraft.village.VillagerType;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
+import net.minecraft.client.player.RemotePlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.monster.ZombieVillager;
+import net.minecraft.world.entity.npc.AbstractVillager;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerData;
+import net.minecraft.world.entity.npc.VillagerProfession;
+import net.minecraft.world.entity.npc.VillagerType;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
 
 /** 在实际世界与原版 renderer 中验收字节入口，并保存同帧近景。 */
 public final class MobAnimationClientTest implements ClientModInitializer {
@@ -72,7 +72,7 @@ public final class MobAnimationClientTest implements ClientModInitializer {
     private boolean capture;
     private boolean finished;
     private LivingEntity target;
-    private ArmorStandEntity camera;
+    private ArmorStand camera;
     private Placement targetPlacement;
     private Placement cameraPlacement;
     private PlayerAnimationHost host;
@@ -87,16 +87,16 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         // 在世界 tick 完成后写入截图状态，正式 END_CLIENT_TICK 观察器随后读取。
         ClientTickEvents.END_WORLD_TICK.register(world -> {
             if (target != null && caseIndex < CASES.size()) {
-                automaticState(MinecraftClient.getInstance());
+                automaticState(Minecraft.getInstance());
             }
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         WorldRenderEvents.END.register(context -> screenshot());
     }
 
-    private void tick(MinecraftClient client) {
+    private void tick(Minecraft client) {
         // 等待实际世界，再逐个驱动状态并交给同帧截图回调验收。
-        if (finished || client.world == null || client.player == null) {
+        if (finished || client.level == null || client.player == null) {
             return;
         }
         try {
@@ -128,36 +128,36 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         }
     }
 
-    private void initialize(MinecraftClient client) throws Exception {
+    private void initialize(Minecraft client) throws Exception {
         // 装饰公开字节入口，验证截图中自动层和真实网络动作的确进入 PA。
         recording = MobRecordingHost.install();
         host = recording;
-        cleaned = client.getServer().submit(() -> MobTechniqueClientScene.cleanWorld(client.getServer()));
+        cleaned = client.getSingleplayerServer().submit(() -> MobTechniqueClientScene.cleanWorld(client.getSingleplayerServer()));
         Files.createDirectories(SCREENS);
         double originX = Math.floor(client.player.getX()) + 0.5;
         double originY = client.player.getY();
         double originZ = Math.floor(client.player.getZ()) + 0.5;
         targetPlacement = new Placement(originX, originY, originZ, 0, 0);
-        client.options.hudHidden = true;
-        client.options.setPerspective(Perspective.FIRST_PERSON);
-        client.options.getFov().setValue(FOV);
-        camera = new ArmorStandEntity(EntityType.ARMOR_STAND, client.world);
+        client.options.hideGui = true;
+        client.options.setCameraType(CameraType.FIRST_PERSON);
+        client.options.fov().set(FOV);
+        camera = new ArmorStand(EntityType.ARMOR_STAND, client.level);
         camera.setInvisible(true /* invisible */);
         camera.setNoGravity(true /* noGravity */);
         camera.setId(CAMERA_ID);
-        client.world.addEntity(CAMERA_ID, camera);
+        client.level.putNonPlayerEntity(CAMERA_ID, camera);
         client.setCameraEntity(camera);
         cameraPlacement = new Placement(originX + CAMERA_X,
-                originY + CAMERA_EYE_Y - camera.getStandingEyeHeight(), originZ + CAMERA_Z, CAMERA_YAW, CAMERA_PITCH);
+                originY + CAMERA_EYE_Y - camera.getEyeHeight(), originZ + CAMERA_Z, CAMERA_YAW, CAMERA_PITCH);
     }
 
-    private void prepareCase(MinecraftClient client) throws Exception {
+    private void prepareCase(Minecraft client) throws Exception {
         // 错误契约先验证，自动状态用例由正式 tick 驱动，不手工启动目标片段。
         String name = CASES.get(caseIndex);
         target = createTarget(client, name);
         configureTarget(name);
         target.setId(TARGET_ID);
-        client.world.addEntity(TARGET_ID, target);
+        client.level.putNonPlayerEntity(TARGET_ID, target);
         pinEntity(target, targetPlacement);
         checkTargetContract();
         if (DoorBreakerClientCases.matches(name)) {
@@ -169,13 +169,13 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         settleTicks = 0;
     }
 
-    private static LivingEntity createTarget(MinecraftClient client, String name) {
+    private static LivingEntity createTarget(Minecraft client, String name) {
         // 同一实体分别覆盖移动、原版动作和装备状态，不手工播放自动层。
         if (DoorBreakerClientCases.matches(name)) {
             return DoorBreakerClientCases.create(client, name);
         }
         if (name.equals("player")) {
-            return new OtherClientPlayerEntity(client.world,
+            return new RemotePlayer(client.level,
                     new GameProfile(UUID.fromString("00000000-0000-0000-0000-000000000001"), "PA_reference"));
         }
         String type = switch (name) {
@@ -190,19 +190,19 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             case "wandering_trader_trade" -> "wandering_trader";
             default -> name;
         };
-        return (LivingEntity) EntityType.get(type).orElseThrow().create(client.world);
+        return (LivingEntity) EntityType.byString(type).orElseThrow().create(client.level);
     }
 
     private void configureTarget(String name) {
         // 阻止本地 AI 和重力改变截图的固定机位与姿态。
         target.setNoGravity(true /* noGravity */);
-        if (target instanceof MobEntity mob) {
-            mob.setAiDisabled(true /* aiDisabled */);
+        if (target instanceof Mob mob) {
+            mob.setNoAi(true /* aiDisabled */);
         }
         VillagerData data = new VillagerData(VillagerType.SNOW, VillagerProfession.LIBRARIAN, VILLAGER_LEVEL);
-        if (target instanceof VillagerEntity villager) {
+        if (target instanceof Villager villager) {
             villager.setVillagerData(data);
-        } else if (target instanceof ZombieVillagerEntity villager) {
+        } else if (target instanceof ZombieVillager villager) {
             villager.setVillagerData(data);
         }
         configureEquipment(name);
@@ -211,21 +211,21 @@ public final class MobAnimationClientTest implements ClientModInitializer {
     private void configureEquipment(String name) {
         // 专属招式单持斧头，其余用例分别检查盔甲、盾牌和头饰遮挡。
         if (name.equals("zombie_armor")) {
-            target.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
-            target.equipStack(EquipmentSlot.LEGS, new ItemStack(Items.DIAMOND_LEGGINGS));
-            target.equipStack(EquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
-            target.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.DIAMOND_SWORD));
+            target.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
+            target.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.DIAMOND_LEGGINGS));
+            target.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
+            target.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.DIAMOND_SWORD));
         }
         if (name.startsWith("vindicator_")) {
-            target.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
-            target.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
-            target.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
-            target.equipStack(EquipmentSlot.LEGS, new ItemStack(Items.DIAMOND_LEGGINGS));
-            target.equipStack(EquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
-            target.equipStack(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+            target.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
+            target.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+            target.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
+            target.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.DIAMOND_LEGGINGS));
+            target.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
+            target.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
         }
         if (name.equals("vindicator_banner")) {
-            target.equipStack(EquipmentSlot.HEAD, new ItemStack(Items.WHITE_BANNER));
+            target.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.WHITE_BANNER));
         }
         if (DoorBreakerClientCases.matches(name)) {
             DoorBreakerClientCases.equip(target, name);
@@ -241,36 +241,36 @@ public final class MobAnimationClientTest implements ClientModInitializer {
                 || name.startsWith("pillager_") || name.endsWith("_idle") || name.endsWith("_trade");
     }
 
-    private void automaticState(MinecraftClient client) {
+    private void automaticState(Minecraft client) {
         // 固定镜头下推进实际原版字段，确认自动选择器确实观察这些字段。
         String name = CASES.get(caseIndex);
         if (name.equals("vindicator_walk")) {
-            target.limbAnimator.updateLimbs(WALK_SPEED, 1);
+            target.walkAnimation.update(WALK_SPEED, 1);
         } else if (name.equals("vindicator_run")) {
-            target.limbAnimator.updateLimbs(RUN_SPEED, 1);
+            target.walkAnimation.update(RUN_SPEED, 1);
         } else if (name.equals("vindicator_axe_ready")) {
-            ((MobEntity) target).setAttacking(true /* attacking */);
+            ((Mob) target).setAggressive(true /* attacking */);
         } else if (name.equals("vindicator_axe_swing")) {
-            target.handSwinging = true;
-            target.handSwingProgress = SWING_PROGRESS;
-            target.lastHandSwingProgress = SWING_PROGRESS;
-        } else if (target instanceof WitchEntity witch) {
-            witch.setDrinking(true /* drinking */);
-            witch.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.POTION));
-        } else if (target instanceof PillagerEntity pillager) {
-            pillager.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.CROSSBOW));
-            pillager.setCharging(name.equals("pillager_charge"));
-            pillager.setAttacking(true /* attacking */);
-        } else if (target instanceof MerchantEntity merchant && name.endsWith("_trade")) {
-            merchant.setCustomer(client.player);
+            target.swinging = true;
+            target.attackAnim = SWING_PROGRESS;
+            target.oAttackAnim = SWING_PROGRESS;
+        } else if (target instanceof Witch witch) {
+            witch.setUsingItem(true /* drinking */);
+            witch.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.POTION));
+        } else if (target instanceof Pillager pillager) {
+            pillager.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.CROSSBOW));
+            pillager.setChargingCrossbow(name.equals("pillager_charge"));
+            pillager.setAggressive(true /* attacking */);
+        } else if (target instanceof AbstractVillager merchant && name.endsWith("_trade")) {
+            merchant.setTradingPlayer(client.player);
         }
     }
 
-    private void tickTechnique(MinecraftClient client) {
+    private void tickTechnique(Minecraft client) {
         // 真实整合服生成真炁卫道士，让 AI 经功法宿主下发 PA；镜头继续使用同一机位。
         if (techniqueScene == null) {
             techniqueScene = new MobTechniqueClientScene(client,
-                    new Vec3d(targetPlacement.x(), targetPlacement.y(), targetPlacement.z()));
+                    new Vec3(targetPlacement.x(), targetPlacement.y(), targetPlacement.z()));
         }
         pinEntity(camera, cameraPlacement);
         capture = techniqueScene.ready(client, recording);
@@ -325,16 +325,16 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         double z = placement.z();
         float yaw = placement.yaw();
         float pitch = placement.pitch();
-        entity.refreshPositionAndAngles(x, y, z, yaw, pitch);
-        entity.prevX = x;
-        entity.prevY = y;
-        entity.prevZ = z;
-        entity.bodyYaw = yaw;
-        entity.prevBodyYaw = yaw;
-        entity.headYaw = yaw;
-        entity.prevHeadYaw = yaw;
-        entity.prevYaw = yaw;
-        entity.prevPitch = pitch;
+        entity.moveTo(x, y, z, yaw, pitch);
+        entity.xo = x;
+        entity.yo = y;
+        entity.zo = z;
+        entity.yBodyRot = yaw;
+        entity.yBodyRotO = yaw;
+        entity.yHeadRot = yaw;
+        entity.yHeadRotO = yaw;
+        entity.yRotO = yaw;
+        entity.xRotO = pitch;
     }
 
     private void screenshot() {
@@ -343,16 +343,16 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             return;
         }
         capture = false;
-        MinecraftClient client = MinecraftClient.getInstance();
-        try (var image = ScreenshotRecorder.takeScreenshot(client.getFramebuffer())) {
+        Minecraft client = Minecraft.getInstance();
+        try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
             if (caseIndex == CASES.size()) {
-                image.writeTo(SCREENS.resolve("vindicator_technique.png"));
+                image.writeToFile(SCREENS.resolve("vindicator_technique.png"));
                 finish(null);
                 return;
             }
             verifyAutomatic();
-            image.writeTo(SCREENS.resolve(CASES.get(caseIndex) + ".png"));
-            client.world.removeEntity(TARGET_ID, Entity.RemovalReason.DISCARDED);
+            image.writeToFile(SCREENS.resolve(CASES.get(caseIndex) + ".png"));
+            client.level.removeEntity(TARGET_ID, Entity.RemovalReason.DISCARDED);
             target = null;
             caseIndex++;
         } catch (Exception failure) {
@@ -396,7 +396,7 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         } catch (Exception reportFailure) {
             throw new IllegalStateException(reportFailure);
         }
-        MinecraftClient.getInstance().scheduleStop();
+        Minecraft.getInstance().stop();
     }
 
 }

@@ -17,7 +17,7 @@ PA 通过 Fabric entrypoint `kizuna_player_animation` 暴露 `PlayerAnimationHos
 | 玩家事件 | 生物仅推进内部时间线，不调用 `PlayerAnimations.EVENT`；客户端回归验证事件隔离、卸载清理和 ID 复用。 |
 | 村民双臂 | 确认村民、流浪商人分臂贴图区透明，改用交叉臂原版盒及其 UV 分开映射；没有动画时完全保留原版交叉臂绘制。 |
 
-代码收尾还修复了实体类型绑定的命名空间问题：`zombie` 能通过原版标识符校验，但旧实现用原字符串保存绑定，查询 `minecraft:zombie` 时无法命中。注册与查询现在统一使用 `Identifier`，所有实体类型解析、校验完毕后才替换映射。新增字节入口回归先在旧实现上复现 `INVALID_REQUEST`，修复后返回 `OK`；协议文档同步说明默认命名空间。玩家事件测试增加正向对照，先确认玩家播放确实发出事件，再验证生物隔离与卸载清理，避免空通过。
+代码收尾还修复了实体类型绑定的命名空间问题：`zombie` 能通过原版标识符校验，但旧实现用原字符串保存绑定，查询 `minecraft:zombie` 时无法命中。注册与查询现在统一使用 `ResourceLocation`，所有实体类型解析、校验完毕后才替换映射。新增字节入口回归先在旧实现上复现 `INVALID_REQUEST`，修复后返回 `OK`；协议文档同步说明默认命名空间。玩家事件测试增加正向对照，先确认玩家播放确实发出事件，再验证生物隔离与卸载清理，避免空通过。
 
 重复求值整理限于实体入口的进度读取、播放器 tick、scrub 接缝偏移、持物参数和服务端线程校验；scrub 游标更新提取为播放器内部方法，插值规则与数值保持不变。命令权限级别使用具名常量，移除未使用的日志器和 import。规范化只做一次，播放入口共享校验，保持职责边界并减少重复逻辑。
 
@@ -62,13 +62,13 @@ PA 新增或修改的范围如下，均为入口、播放或渲染所需接线�
 
 | 几何 | 原版来源及保留差异 |
 | --- | --- |
-| zombie | `BipedEntityModel.getModelData`，64×64，8×8×8 头、8×12×4 身体、4×12×4 四肢；绑定僵尸、尸壳。 |
-| skeleton / wither_skeleton | `SkeletonEntityModel.getTexturedModelData`，64×32，2×12×2 四肢；凋灵骷髅保留原版 renderer 的 1.2 倍缩放，不在几何再乘一次。 |
-| piglin | `PiglinEntityModel.getModelData`，64×64，10×8×8 宽头、原版鼻部/獠牙、双耳及 ±30° 静态耳旋转；绑定猪灵、蛮兵和僵尸猪灵。 |
-| villager | `VillagerResemblingModel.getModelData`，64×64，8×10×8 头、2×4×2 鼻、8×12×6 身体、袍子、帽子/帽沿；绑定村民、流浪商人。 |
-| illager | `IllagerEntityModel.getTexturedModelData`，64×64，保留头、鼻、厚躯干/袍子、原版独立双臂；绑定卫道士、掠夺者、唤魔者、幻术师。 |
-| zombie_villager | `ZombieVillagerEntityModel.getTexturedModelData`，保留其头鼻、袍子和帽沿，不复用普通僵尸头。 |
-| drowned / drowned_overlay | `DrownedEntityModel.getTexturedModelData`，本体及 0.25 像素 dilation 外层分别导出。 |
+| zombie | `HumanoidModel.createMesh`，64×64，8×8×8 头、8×12×4 身体、4×12×4 四肢；绑定僵尸、尸壳。 |
+| skeleton / wither_skeleton | `SkeletonModel.createBodyLayer`，64×32，2×12×2 四肢；凋灵骷髅保留原版 renderer 的 1.2 倍缩放，不在几何再乘一次。 |
+| piglin | `PiglinModel.createMesh`，64×64，10×8×8 宽头、原版鼻部/獠牙、双耳及 ±30° 静态耳旋转；绑定猪灵、蛮兵和僵尸猪灵。 |
+| villager | `VillagerModel.createBodyModel`，64×64，8×10×8 头、2×4×2 鼻、8×12×6 身体、袍子、帽子/帽沿；绑定村民、流浪商人。 |
+| illager | `IllagerModel.createBodyLayer`，64×64，保留头、鼻、厚躯干/袍子、原版独立双臂；绑定卫道士、掠夺者、唤魔者、幻术师。 |
+| zombie_villager | `ZombieVillagerModel.createBodyLayer`，保留其头鼻、袍子和帽沿，不复用普通僵尸头。 |
+| drowned / drowned_overlay | `DrownedModel.createBodyLayer`，本体及 0.25 像素 dilation 外层分别导出。 |
 | stray_overlay | 原版 Biped 外层工厂，64×32，4 像素宽四肢及 0.25 像素 dilation；本体仍为 2 像素宽骷髅。 |
 
 每个切段面用原版四边形进行仿射 UV 插值，保留镜像与面朝向。`inflate_origin` / `inflate_size` 记录完整原盒边界，保证外层分段不重复膨胀。鼻、耳、帽沿按原版静态子部件变换烘焙后进入同一蒙皮路径。

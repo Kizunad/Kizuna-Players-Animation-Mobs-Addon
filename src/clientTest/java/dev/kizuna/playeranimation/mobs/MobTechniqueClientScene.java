@@ -5,20 +5,20 @@ import java.util.ArrayList;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.mob.VindicatorEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.GameRules;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.monster.Vindicator;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /** 完整装配下观察真正的类人 AI、功法表现和 PA 网络播放。 */
 final class MobTechniqueClientScene {
@@ -29,27 +29,27 @@ final class MobTechniqueClientScene {
             "door_breaker_knock", "door_breaker_cleave", "door_breaker_ram");
     private final CompletableFuture<Integer> spawned = new CompletableFuture<>();
     private volatile long startedAt = -1;
-    private VindicatorEntity actor;
+    private Vindicator actor;
     private int ticks;
     private volatile int targetId;
     private volatile String animation;
     private volatile String observedClips = "[]";
 
-    MobTechniqueClientScene(MinecraftClient client, Vec3d position) {
+    MobTechniqueClientScene(Minecraft client, Vec3 position) {
         // 通过公开管理命令出生，不绕过档位初始化、学卷或原版 AI 决策。
-        MinecraftServer server = client.getServer();
+        MinecraftServer server = client.getSingleplayerServer();
         ServerTickEvents.END_SERVER_TICK.register(this::observe);
         server.execute(() -> spawn(server, position));
     }
 
     static void cleanWorld(MinecraftServer server) {
         // 独立测试世界可能保留上次客户端保存的实体；清理夹具，避免旧卫道士遮挡或被误选。
-        var world = server.getOverworld();
-        world.getGameRules().get(GameRules.DO_MOB_SPAWNING).set(false /* value */, server);
+        var world = server.overworld();
+        world.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false /* value */, server);
         var unwanted = new ArrayList<Entity>();
-        for (var entity : world.iterateEntities()) {
-            if (entity instanceof ServerPlayerEntity player) {
-                player.changeGameMode(GameMode.SPECTATOR);
+        for (var entity : world.getAllEntities()) {
+            if (entity instanceof ServerPlayer player) {
+                player.setGameMode(GameType.SPECTATOR);
             } else {
                 unwanted.add(entity);
             }
@@ -57,29 +57,29 @@ final class MobTechniqueClientScene {
         unwanted.forEach(Entity::discard);
     }
 
-    private void spawn(MinecraftServer server, Vec3d position) {
+    private void spawn(MinecraftServer server, Vec3 position) {
         // 异常交回客户端测试线程，使缺接线与出生失败成为明确失败。
         try {
             server.setDifficulty(Difficulty.NORMAL, true /* forceUpdate */);
-            var world = server.getOverworld();
-            var previous = world.getEntitiesByType(EntityType.VINDICATOR, entity -> true).stream()
-                    .map(Entity::getUuid)
+            var world = server.overworld();
+            var previous = world.getEntities(EntityType.VINDICATOR, entity -> true).stream()
+                    .map(Entity::getUUID)
                     .collect(Collectors.toSet());
-            var source = server.getCommandSource().withWorld(world).withPosition(position);
-            int result = server.getCommandManager().executeWithPrefix(source,
+            var source = server.createCommandSourceStack().withLevel(world).withPosition(position);
+            int result = server.getCommands().performPrefixedCommand(source,
                     "meridian humanoid summon vindicator true_qi ~ ~ ~");
             if (result != 1) {
                 throw new IllegalStateException("真炁卫道士出生命令失败");
             }
-            actor = world.getEntitiesByType(EntityType.VINDICATOR, Box.of(position, 1, TARGET_DISTANCE, 1),
-                    entity -> !previous.contains(entity.getUuid())).get(0);
-            actor.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
-            actor.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
-            actor.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
+            actor = world.getEntities(EntityType.VINDICATOR, AABB.ofSize(position, 1, TARGET_DISTANCE, 1),
+                    entity -> !previous.contains(entity.getUUID())).get(0);
+            actor.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
+            actor.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
+            actor.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
             var cow = EntityType.COW.create(world);
-            cow.refreshPositionAndAngles(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
-            cow.setAiDisabled(true /* aiDisabled */);
-            world.spawnEntity(cow);
+            cow.moveTo(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
+            cow.setNoAi(true /* aiDisabled */);
+            world.addFreshEntity(cow);
             targetId = cow.getId();
             actor.setTarget(cow);
             spawned.complete(actor.getId());
@@ -100,12 +100,12 @@ final class MobTechniqueClientScene {
             if (DOOR_CLIPS.contains(play.getAnimationId())) {
                 animation = play.getAnimationId();
                 startedAt = play.getStartTick();
-                actor.setAiDisabled(true /* aiDisabled */);
+                actor.setNoAi(true /* aiDisabled */);
             }
         }
     }
 
-    boolean ready(MinecraftClient client, MobRecordingHost recording) {
+    boolean ready(Minecraft client, MobRecordingHost recording) {
         // 留出少量淡入时间，同时要求客户端实际加载了服务端出生的实体。
         if (++ticks > TIMEOUT_TICKS) {
             throw new IllegalStateException("未观察到真炁卫道士的 PA 功法播放：" + observedClips);
@@ -114,13 +114,13 @@ final class MobTechniqueClientScene {
             return false;
         }
         int id = spawned.join();
-        var target = client.world.getEntityById(targetId);
+        var target = client.level.getEntity(targetId);
         if (target != null) {
             target.setInvisible(true /* invisible */);
         }
         var play = recording.explicit(id);
-        return startedAt >= 0 && client.world.getEntityById(id) != null
-                && client.world.getTime() >= startedAt + CAPTURE_DELAY_TICKS
+        return startedAt >= 0 && client.level.getEntity(id) != null
+                && client.level.getGameTime() >= startedAt + CAPTURE_DELAY_TICKS
                 && play != null && play.getAnimationId().equals(animation)
                 && play.getStartTick() == startedAt;
     }

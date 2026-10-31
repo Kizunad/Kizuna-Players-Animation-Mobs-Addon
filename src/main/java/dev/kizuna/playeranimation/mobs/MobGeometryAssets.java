@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
-import net.minecraft.entity.EntityType;
-import net.minecraft.registry.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.entity.EntityType;
 
 /** 读取附属几何并在资源重载边界重新注册到 PA。 */
 final class MobGeometryAssets implements SimpleSynchronousResourceReloadListener {
@@ -42,20 +42,20 @@ final class MobGeometryAssets implements SimpleSynchronousResourceReloadListener
 
     static boolean supports(EntityType<?> type) {
         // 自动驱动严格使用同一份已注册几何列表。
-        return ENTITY_TYPES.contains(Registries.ENTITY_TYPE.getId(type).toString());
+        return ENTITY_TYPES.contains(BuiltInRegistries.ENTITY_TYPE.getKey(type).toString());
     }
 
     @Override
-    public Identifier getFabricId() {
-        return new Identifier(NAMESPACE, "mob_geometry");
+    public ResourceLocation getFabricId() {
+        return new ResourceLocation(NAMESPACE, "mob_geometry");
     }
 
     @Override
-    public void reload(ResourceManager manager) {
+    public void onResourceManagerReload(ResourceManager manager) {
         // 重载注册先完成几何，再让客户端自动层重新读取实体状态。
         for (Registration registration : REGISTRATIONS) {
-            Identifier resourceId = new Identifier(NAMESPACE, registration.path());
-            try (var stream = manager.getResourceOrThrow(resourceId).getInputStream()) {
+            ResourceLocation resourceId = new ResourceLocation(NAMESPACE, registration.path());
+            try (var stream = manager.getResourceOrThrow(resourceId).open()) {
                 byte[] geometry = stream.readAllBytes();
                 MobAnimationClient.registerGeometry(registration.geometryId(), geometry, registration.entityTypes(),
                         registration.overlayGeometryId());
