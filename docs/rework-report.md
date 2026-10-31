@@ -11,7 +11,7 @@ PA 通过 Fabric entrypoint `kizuna_player_animation` 暴露 `PlayerAnimationHos
 | 审阅项 | 最终实现与证据 |
 | --- | --- |
 | 几何及 UV | 从 1.20.1 原版模型工厂导出逐盒顶点、UV、枢轴、dilation、静态变换，再裁切到 PA 关节；逐盒 UV 拼回、体积、骨集合和细节测试覆盖 10 份几何。 |
-| 特征层 | `MobFeatureRendererMixin` 替换标准 `FeatureRenderer.renderModel` 的网格提交；职业、群系、等级、溺尸和流浪者外层复用本体同帧骨矩阵。原版盔甲及手持物另行接线。 |
+| 特征层 | `MobFeatureRendererMixin` 替换标准 `RenderLayer.renderColoredCutoutModel` 的网格提交；职业、群系、等级、溺尸和流浪者外层复用本体同帧骨矩阵。原版盔甲及手持物另行接线。 |
 | 协议副本 | 附属 `sourceSets.main.proto` 直接使用 PA 源码目录，只选择实体协议；生成代码不纳入版本控制。 |
 | 代码形状 | 移除行内全限定类名；`entityPlayback` 合并生物 play/scrub 的资源与实体校验；拆分几何解析、网格烘焙与事件收集；补充关键约束的中文注释。 |
 | 玩家事件 | 生物仅推进内部时间线，不调用 `PlayerAnimations.EVENT`；客户端回归验证事件隔离、卸载清理和 ID 复用。 |
