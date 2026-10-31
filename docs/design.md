@@ -26,6 +26,6 @@ PA 为非 Biped 渲染器补齐原版盔甲材质入口；手持物始终使用�
 
 ## 运行与验证
 
-服务端调试命令是 `/kizuna_anim_mob play <targets> <animation> [loop]` 和 `/kizuna_anim_mob stop <targets>`，权限为 2。几何边界、协议编解码、服务端追踪补发和实体移除清理分别由单元测试与 GameTest 覆盖；客户端截图脚本把结果放在 `build/mob-screens/`。
+服务端调试命令是 `/kizuna_anim_mob play <targets> <animation> [loop]` 和 `/kizuna_anim_mob stop <targets>`，权限为 2；`<animation>` 的补全取 PA `ServerPlayerAnimations.animationIds()`（PA 内置动画索引），不另维护列表。几何边界、协议编解码、服务端追踪补发和实体移除清理分别由单元测试与 GameTest 覆盖；客户端截图脚本把结果放在 `build/mob-screens/`。
 
 服务端快照保留到显式停止或实体卸载，不自动按客户端动画时长到期。后来追踪时补发已经结束的一次性动作，PA 会按原起点跳过过期播放。客户端错误只记录在本地日志，不向服务端回传结果。玩家仍使用 PA 的玩家事件与装备语义，生物不发布 `PlayerAnimations.EVENT`。

@@ -1,6 +1,9 @@
 package dev.kizuna.playeranimation.mobs;
 
+import com.mojang.brigadier.suggestion.Suggestion;
+import dev.kizuna.playeranimation.server.ServerPlayerAnimations;
 import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Set;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
@@ -82,6 +85,23 @@ public final class MobAnimationGameTest implements FabricGameTest {
         } finally {
             server.getPlayerList().remove(viewer);
         }
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void playAnimationArgumentCompletesFromPaIndex(GameTestHelper context) {
+        // 补全不再写死几项，PA 内置索引里的每个 id 都要列出，含原先写死的四项。
+        List<String> ids = ServerPlayerAnimations.animationIds();
+        context.assertTrue(ids.containsAll(List.of("walk", "run", "dodge_forward", "meditate", "attack_main")),
+                "PA 内置索引应包含原先写死的四项与原版动作，实际 " + ids);
+        var server = context.getLevel().getServer();
+        var dispatcher = server.getCommands().getDispatcher();
+        var parsed = dispatcher.parse("kizuna_anim_mob play @s ", server.createCommandSourceStack());
+        List<String> suggested = dispatcher.getCompletionSuggestions(parsed).join().getList().stream()
+                .map(Suggestion::getText)
+                .toList();
+        context.assertTrue(suggested.size() == ids.size() && Set.copyOf(suggested).equals(Set.copyOf(ids)),
+                "动画参数补全应与 PA 内置索引一致，实际 " + suggested);
+        context.succeed();
     }
 
     private static Field field(String name) throws ReflectiveOperationException {

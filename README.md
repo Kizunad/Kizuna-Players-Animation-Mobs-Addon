@@ -49,7 +49,7 @@ python3 "scripts/test_mob_geometry.py"
 /kizuna_anim_mob stop <targets>
 ```
 
-命令要求权限 2。省略 `loop` 时沿用动画资源定义；`true` 强制循环，`false` 强制一次播放。构建、运行目录和截图不纳入版本控制；本次不提交、不推送。
+命令要求权限 2，`<animation>` 按 PA 内置动画索引补全。省略 `loop` 时沿用动画资源定义；`true` 强制循环，`false` 强制一次播放。构建、运行目录和截图不纳入版本控制；本次不提交、不推送。
 
 服务端公开 API：`MobAnimationServer.play`、`playFrom`、`repeat`、`stop`、`stopAll`。
 `playFrom` 接收原始世界起播 tick，范围为 `[0, 当前 tick]`；追踪补发保留请求身份与起点。

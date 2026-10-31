@@ -9,6 +9,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.EntityAnimationRequest;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Play;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Stop;
+import dev.kizuna.playeranimation.server.ServerPlayerAnimations;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -208,13 +209,14 @@ public final class MobAnimationServer implements ModInitializer {
     }
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        // 生物与玩家播放同一套 PA 动画，补全直接取 PA 内置索引，不另维护列表。
+        List<String> animations = ServerPlayerAnimations.animationIds();
         dispatcher.register(Commands.literal("kizuna_anim_mob")
                 .requires(source -> source.hasPermission(COMMAND_PERMISSION_LEVEL))
                 .then(Commands.literal("play")
                         .then(Commands.argument("targets", EntityArgument.entities())
                                 .then(Commands.argument("animation", StringArgumentType.word())
-                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
-                                                List.of("walk", "run", "dodge_forward", "meditate"), builder))
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(animations, builder))
                                         .executes(context -> playTargets(context, LoopMode.RESOURCE))
                                         .then(Commands.argument("loop", BoolArgumentType.bool())
                                                 .executes(context -> {
