@@ -1,7 +1,7 @@
 package dev.kizuna.playeranimation.mobs.mixin;
 
 import dev.kizuna.playeranimation.mobs.MobAnimationServer;
-import net.minecraft.world.entity.npc.AbstractVillager;
+import net.minecraft.world.entity.npc.villager.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

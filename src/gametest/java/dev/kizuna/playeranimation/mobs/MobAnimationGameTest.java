@@ -5,23 +5,22 @@ import dev.kizuna.playeranimation.server.ServerPlayerAnimations;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Set;
-import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-public final class MobAnimationGameTest implements FabricGameTest {
+public final class MobAnimationGameTest {
     private static final int ELAPSED_TICKS = 4;
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void vindicatorActionKeepsEquipmentAndOriginalStart(GameTestHelper context) {
         // 正式同步入口使用卫道士、真实装备和历史起点，停止后不再补发旧功法。
-        var entity = context.spawnWithNoFreeWill(EntityType.VINDICATOR, new BlockPos(0, 1, 0));
+        var entity = context.spawnWithNoFreeWill(EntityTypes.VINDICATOR, new BlockPos(0, 1, 0));
         entity.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
         entity.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
         entity.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
@@ -37,10 +36,10 @@ public final class MobAnimationGameTest implements FabricGameTest {
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void merchantInteractionStartsAndStopsPaAtBoundary(GameTestHelper context) {
         // 客户关系由服务端权威持有，旁观客户端通过显式播放与停止看到交易动作。
-        var merchant = context.spawnWithNoFreeWill(EntityType.VILLAGER, new BlockPos(0, 1, 0));
+        var merchant = context.spawnWithNoFreeWill(EntityTypes.VILLAGER, new BlockPos(0, 1, 0));
         var customer = context.makeMockServerPlayerInLevel();
         try {
             merchant.setTradingPlayer(customer);
@@ -54,10 +53,10 @@ public final class MobAnimationGameTest implements FabricGameTest {
         }
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void playTrackingQueueAndUnloadCleanup(GameTestHelper context) throws ReflectiveOperationException {
         // 通过正式服务端入口登记，再触发 Fabric 追踪与实体卸载生命周期。
-        var entity = context.spawnWithNoFreeWill(EntityType.ZOMBIE, new BlockPos(0, 1, 0));
+        var entity = context.spawnWithNoFreeWill(EntityTypes.ZOMBIE, new BlockPos(0, 1, 0));
         var viewer = context.makeMockServerPlayerInLevel();
         var server = context.getLevel().getServer();
         MobAnimationSyncState state = (MobAnimationSyncState) field("STATE").get(null);
@@ -87,7 +86,7 @@ public final class MobAnimationGameTest implements FabricGameTest {
         }
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void playAnimationArgumentCompletesFromPaIndex(GameTestHelper context) {
         // 补全不再写死几项，PA 内置索引里的每个 id 都要列出，含原先写死的四项。
         List<String> ids = ServerPlayerAnimations.animationIds();

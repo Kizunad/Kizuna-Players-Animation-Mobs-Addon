@@ -11,11 +11,11 @@ ext.kpaProtoDir = new File(kizunaWorkspace.directory('players-animation'), 'src/
 repositories { mavenCentral() }
 
 dependencies {
+    // 26.x 不混淆：直接用官方名编译，没有映射，模组依赖也不经重映射。
     minecraft libs.minecraft
-    mappings loom.officialMojangMappings()
-    modImplementation libs.fabric.loader
-    modImplementation libs.fabric.api
-    modImplementation 'dev.kizuna:kizuna-players-animation'
+    implementation libs.fabric.loader
+    implementation libs.fabric.api
+    implementation 'dev.kizuna:kizuna-players-animation'
     implementation libs.protobuf.java
     include libs.protobuf.java
     testImplementation libs.junit.jupiter

@@ -14,7 +14,7 @@ PA 公开的 Fabric 入口 `kizuna_player_animation` 只有 `exchange(byte[])`�
 
 ## 几何来源
 
-`VanillaModelExport` 直接调用 Minecraft 1.20.1 原版模型工厂，导出盒尺寸、枢轴、逐面顶点与 UV、dilation、子部件静态变换。`scripts/generate_mob_geometry.py` 按 PA classic 的关节切口裁切原版体积，以原版面的仿射 UV 插值生成 `geo/mob_skeletons.geo.json`；classic 只提供骨层级、切口和挂点参考，不复制玩家皮肤几何。切口内部不额外造面，指头只切分原版手末端已有体积。
+`VanillaModelExport` 直接调用原版模型工厂，导出盒尺寸、枢轴、逐面顶点与 UV、dilation、子部件静态变换。26.2 把类人模型的帽子、外套、袖子和裤腿挂到对应主部件之下，导出时把这些覆盖层路径还原为根级部件名，生成脚本的来源编号不变。26.2 导出与 1.20.1 导出逐盒一致；猪灵身体、左臂两根骨内本体与覆盖层方块的先后次序随遍历顺序互换，几何资源沿用 1.20.1 生成结果。`scripts/generate_mob_geometry.py` 按 PA classic 的关节切口裁切原版体积，以原版面的仿射 UV 插值生成 `geo/mob_skeletons.geo.json`；classic 只提供骨层级、切口和挂点参考，不复制玩家皮肤几何。切口内部不额外造面，指头只切分原版手末端已有体积。
 
 资源含 11 份几何，保留完整的 24 可见骨定义，加 root 与两个手持挂点。僵尸使用原版 Biped 工厂的 64×64 布局；骷髅系使用 64×32 纹理和 2×12×2 四肢；猪灵保留宽头、鼻部和静态旋转双耳；村民保留头鼻、身体、袍子和帽沿；灾厄村民保留独立双臂；僵尸村民、溺尸、女巫使用各自模型工厂。女巫鼻痣的负 dilation 烘焙为实际尺寸，帽子静态旋转和 UV 保留。外层只保留原版确有的盒与厚度。
 

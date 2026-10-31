@@ -4,6 +4,7 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.protobuf.ByteString;
 import com.mojang.authlib.GameProfile;
+import com.mojang.blaze3d.platform.NativeImage;
 import dev.kizuna.playeranimation.api.PlayerAnimationHost;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Clear;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.EntityAnimationRequest;
@@ -19,31 +20,39 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.player.RemotePlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntitySpawnRequest;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.entity.monster.Witch;
-import net.minecraft.world.entity.monster.ZombieVillager;
-import net.minecraft.world.entity.npc.AbstractVillager;
-import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.npc.VillagerData;
-import net.minecraft.world.entity.npc.VillagerProfession;
-import net.minecraft.world.entity.npc.VillagerType;
+import net.minecraft.world.entity.monster.illager.Pillager;
+import net.minecraft.world.entity.monster.zombie.ZombieVillager;
+import net.minecraft.world.entity.npc.villager.AbstractVillager;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerData;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.entity.npc.villager.VillagerType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
 /** 在实际世界与原版 renderer 中验收字节入口，并保存同帧近景。 */
 public final class MobAnimationClientTest implements ClientModInitializer {
+    // 1.20.1 的 create(Level) 不做和平难度检查；夹具实体只供绘制，照旧跳过出生检查。
+    static final EntitySpawnRequest FIXTURE =
+            new EntitySpawnRequest(EntitySpawnReason.COMMAND, true /* ignoreChecks */);
     private static final int WAIT_WORLD_TICKS = 60;
     private static final int SETTLE_TICKS = 12;
     private static final int TARGET_ID = 700001;
@@ -65,11 +74,14 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             "wandering_trader_trade", "vindicator_banner").stream(), DoorBreakerClientCases.names().stream()).toList();
     private static final float WALK_SPEED = 0.3f;
     private static final float RUN_SPEED = 0.8f;
+    // 26.2 的步态推进多了位移倍率（幼体为 3）；夹具都是成年实体，取原版成年值。
+    private static final float ADULT_POSITION_SCALE = 1;
     private static final float SWING_PROGRESS = 0.45f;
     private int worldTicks;
     private int caseIndex;
     private int settleTicks;
     private boolean capture;
+    private boolean capturing;
     private boolean finished;
     private LivingEntity target;
     private ArmorStand camera;
@@ -85,13 +97,13 @@ public final class MobAnimationClientTest implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         // 在世界 tick 完成后写入截图状态，正式 END_CLIENT_TICK 观察器随后读取。
-        ClientTickEvents.END_WORLD_TICK.register(world -> {
+        ClientTickEvents.END_LEVEL_TICK.register(world -> {
             if (target != null && caseIndex < CASES.size()) {
                 automaticState(Minecraft.getInstance());
             }
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
-        WorldRenderEvents.END.register(context -> screenshot());
+        LevelRenderEvents.END_MAIN.register(context -> screenshot());
     }
 
     private void tick(Minecraft client) {
@@ -138,14 +150,17 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         double originY = client.player.getY();
         double originZ = Math.floor(client.player.getZ()) + 0.5;
         targetPlacement = new Placement(originX, originY, originZ, 0, 0);
-        client.options.hideGui = true;
+        // 26.2 的隐藏界面开关挪到 HUD 上，只能切换；已隐藏时不再切回。
+        if (!client.gui.hud.isHidden()) {
+            client.gui.hud.toggle();
+        }
         client.options.setCameraType(CameraType.FIRST_PERSON);
         client.options.fov().set(FOV);
-        camera = new ArmorStand(EntityType.ARMOR_STAND, client.level);
+        camera = new ArmorStand(EntityTypes.ARMOR_STAND, client.level);
         camera.setInvisible(true /* invisible */);
         camera.setNoGravity(true /* noGravity */);
         camera.setId(CAMERA_ID);
-        client.level.putNonPlayerEntity(CAMERA_ID, camera);
+        client.level.addEntity(camera);
         client.setCameraEntity(camera);
         cameraPlacement = new Placement(originX + CAMERA_X,
                 originY + CAMERA_EYE_Y - camera.getEyeHeight(), originZ + CAMERA_Z, CAMERA_YAW, CAMERA_PITCH);
@@ -157,7 +172,7 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         target = createTarget(client, name);
         configureTarget(name);
         target.setId(TARGET_ID);
-        client.level.putNonPlayerEntity(TARGET_ID, target);
+        client.level.addEntity(target);
         pinEntity(target, targetPlacement);
         checkTargetContract();
         if (DoorBreakerClientCases.matches(name)) {
@@ -190,7 +205,8 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             case "wandering_trader_trade" -> "wandering_trader";
             default -> name;
         };
-        return (LivingEntity) EntityType.byString(type).orElseThrow().create(client.level);
+        EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(Identifier.parse(type)).orElseThrow();
+        return (LivingEntity) entityType.create(client.level, FIXTURE);
     }
 
     private void configureTarget(String name) {
@@ -199,7 +215,8 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         if (target instanceof Mob mob) {
             mob.setNoAi(true /* aiDisabled */);
         }
-        VillagerData data = new VillagerData(VillagerType.SNOW, VillagerProfession.LIBRARIAN, VILLAGER_LEVEL);
+        VillagerData data = new VillagerData(BuiltInRegistries.VILLAGER_TYPE.getOrThrow(VillagerType.SNOW),
+                BuiltInRegistries.VILLAGER_PROFESSION.getOrThrow(VillagerProfession.LIBRARIAN), VILLAGER_LEVEL);
         if (target instanceof Villager villager) {
             villager.setVillagerData(data);
         } else if (target instanceof ZombieVillager villager) {
@@ -225,7 +242,7 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             target.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
         }
         if (name.equals("vindicator_banner")) {
-            target.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.WHITE_BANNER));
+            target.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.BANNER.white()));
         }
         if (DoorBreakerClientCases.matches(name)) {
             DoorBreakerClientCases.equip(target, name);
@@ -245,9 +262,9 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         // 固定镜头下推进实际原版字段，确认自动选择器确实观察这些字段。
         String name = CASES.get(caseIndex);
         if (name.equals("vindicator_walk")) {
-            target.walkAnimation.update(WALK_SPEED, 1);
+            target.walkAnimation.update(WALK_SPEED, 1, ADULT_POSITION_SCALE);
         } else if (name.equals("vindicator_run")) {
-            target.walkAnimation.update(RUN_SPEED, 1);
+            target.walkAnimation.update(RUN_SPEED, 1, ADULT_POSITION_SCALE);
         } else if (name.equals("vindicator_axe_ready")) {
             ((Mob) target).setAggressive(true /* attacking */);
         } else if (name.equals("vindicator_axe_swing")) {
@@ -325,7 +342,7 @@ public final class MobAnimationClientTest implements ClientModInitializer {
         double z = placement.z();
         float yaw = placement.yaw();
         float pitch = placement.pitch();
-        entity.moveTo(x, y, z, yaw, pitch);
+        entity.snapTo(x, y, z, yaw, pitch);
         entity.xo = x;
         entity.yo = y;
         entity.zo = z;
@@ -339,12 +356,18 @@ public final class MobAnimationClientTest implements ClientModInitializer {
 
     private void screenshot() {
         // 只在世界完成绘制后取图，避免把加载遮罩或上一用例当作通过证据。
-        if (!capture || finished) {
+        if (!capture || capturing || finished) {
             return;
         }
         capture = false;
+        capturing = true;
         Minecraft client = Minecraft.getInstance();
-        try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+        Screenshot.takeScreenshot(client.gameRenderer.mainRenderTarget(), image -> saveCapture(client, image));
+    }
+
+    private void saveCapture(Minecraft client, NativeImage captured) {
+        // 26.2 在显存拷贝完成后才回调；回调前不再取图，用例在回调里推进，避免两次取图交错。
+        try (var image = captured) {
             if (caseIndex == CASES.size()) {
                 image.writeToFile(SCREENS.resolve("vindicator_technique.png"));
                 finish(null);
@@ -357,6 +380,9 @@ public final class MobAnimationClientTest implements ClientModInitializer {
             caseIndex++;
         } catch (Exception failure) {
             finish(failure.toString());
+        } finally {
+            capture = false;
+            capturing = false;
         }
     }
 

@@ -10,13 +10,14 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.monster.Vindicator;
+import net.minecraft.world.entity.monster.illager.Vindicator;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -45,7 +46,7 @@ final class MobTechniqueClientScene {
     static void cleanWorld(MinecraftServer server) {
         // 独立测试世界可能保留上次客户端保存的实体；清理夹具，避免旧卫道士遮挡或被误选。
         var world = server.overworld();
-        world.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false /* value */, server);
+        world.getGameRules().set(GameRules.SPAWN_MOBS, false /* value */, server);
         var unwanted = new ArrayList<Entity>();
         for (var entity : world.getAllEntities()) {
             if (entity instanceof ServerPlayer player) {
@@ -62,22 +63,23 @@ final class MobTechniqueClientScene {
         try {
             server.setDifficulty(Difficulty.NORMAL, true /* forceUpdate */);
             var world = server.overworld();
-            var previous = world.getEntities(EntityType.VINDICATOR, entity -> true).stream()
+            var previous = world.getEntities(EntityTypes.VINDICATOR, entity -> true).stream()
                     .map(Entity::getUUID)
                     .collect(Collectors.toSet());
             var source = server.createCommandSourceStack().withLevel(world).withPosition(position);
-            int result = server.getCommands().performPrefixedCommand(source,
-                    "meridian humanoid spawn vindicator true_qi ~ ~ ~");
-            if (result != 1) {
+            server.getCommands().performPrefixedCommand(source, "meridian humanoid spawn vindicator true_qi ~ ~ ~");
+            // 26.2 的命令执行不再返回结果，改以命令点附近是否多出新卫道士判断出生成功。
+            var spawnedActors = world.getEntities(EntityTypes.VINDICATOR,
+                    AABB.ofSize(position, 1, TARGET_DISTANCE, 1), entity -> !previous.contains(entity.getUUID()));
+            if (spawnedActors.isEmpty()) {
                 throw new IllegalStateException("真炁卫道士出生命令失败");
             }
-            actor = world.getEntities(EntityType.VINDICATOR, AABB.ofSize(position, 1, TARGET_DISTANCE, 1),
-                    entity -> !previous.contains(entity.getUUID())).get(0);
+            actor = spawnedActors.get(0);
             actor.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
             actor.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
             actor.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
-            var cow = EntityType.COW.create(world);
-            cow.moveTo(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
+            var cow = EntityTypes.COW.create(world, EntitySpawnReason.COMMAND);
+            cow.snapTo(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
             cow.setNoAi(true /* aiDisabled */);
             world.addFreshEntity(cow);
             targetId = cow.getId();

@@ -29,7 +29,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -38,7 +38,6 @@ import net.minecraft.world.entity.LivingEntity;
 
 /** 服务端按追踪关系同步任意 LivingEntity 的 PA 动画。 */
 public final class MobAnimationServer implements ModInitializer {
-    private static final int COMMAND_PERMISSION_LEVEL = 2;
     private static final MobAnimationSyncState STATE = new MobAnimationSyncState();
     private static final Set<TrackingPair> PENDING = new HashSet<>();
     private record TrackingPair(UUID target, UUID viewer) { }
@@ -46,6 +45,7 @@ public final class MobAnimationServer implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        MobAnimationPackets.register();
         EntityTrackingEvents.START_TRACKING.register((entity, viewer) -> {
             if (entity instanceof LivingEntity living) {
                 PENDING.add(new TrackingPair(living.getUUID(), viewer.getUUID()));
@@ -170,7 +170,8 @@ public final class MobAnimationServer implements ModInitializer {
         }
     }
 
-    private static void broadcast(LivingEntity target, ResourceLocation channel, MessageLite message) {
+    private static void broadcast(LivingEntity target, CustomPacketPayload.Type<MobAnimationPackets.Payload> channel,
+                                  MessageLite message) {
         Set<ServerPlayer> viewers = new HashSet<>(PlayerLookup.tracking(target));
         if (target instanceof ServerPlayer player) {
             viewers.add(player);
@@ -184,8 +185,9 @@ public final class MobAnimationServer implements ModInitializer {
         }
     }
 
-    private static void send(ServerPlayer viewer, ResourceLocation channel, MessageLite message) {
-        ServerPlayNetworking.send(viewer, channel, MobAnimationPackets.write(message));
+    private static void send(ServerPlayer viewer, CustomPacketPayload.Type<MobAnimationPackets.Payload> channel,
+                             MessageLite message) {
+        ServerPlayNetworking.send(viewer, MobAnimationPackets.write(channel, message));
     }
 
     private static boolean ready(ServerPlayer viewer) {
@@ -212,7 +214,7 @@ public final class MobAnimationServer implements ModInitializer {
         // 生物与玩家播放同一套 PA 动画，补全直接取 PA 内置索引，不另维护列表。
         List<String> animations = ServerPlayerAnimations.animationIds();
         dispatcher.register(Commands.literal("kizuna_anim_mob")
-                .requires(source -> source.hasPermission(COMMAND_PERMISSION_LEVEL))
+                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .then(Commands.literal("play")
                         .then(Commands.argument("targets", EntityArgument.entities())
                                 .then(Commands.argument("animation", StringArgumentType.word())
@@ -279,7 +281,7 @@ public final class MobAnimationServer implements ModInitializer {
     }
 
     private static void requireServerThread(LivingEntity entity) {
-        MinecraftServer server = entity.getServer();
+        MinecraftServer server = entity.level().getServer();
         if (server == null || !server.isSameThread()) {
             throw new IllegalStateException("生物动画同步必须在服务端主线程调用");
         }

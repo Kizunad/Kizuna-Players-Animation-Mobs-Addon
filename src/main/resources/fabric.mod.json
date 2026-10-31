@@ -13,9 +13,9 @@
     "client": ["dev.kizuna.playeranimation.mobs.MobAnimationClient"]
   },
   "depends": {
-    "fabricloader": ">=0.16.10",
-    "minecraft": "~1.20.1",
-    "java": ">=17",
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.2",
+    "java": ">=25",
     "fabric-api": "*",
     "kizuna_players_animation": "*"
   }

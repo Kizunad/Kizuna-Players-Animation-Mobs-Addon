@@ -1,6 +1,6 @@
 # 生物动画附属仓约定
 
-- 目标环境为 Minecraft 1.20.1、Fabric、Java 17。
+- 目标环境为 Minecraft 26.2、Fabric、Java 25。
 - 沟通、文档和说明性注释使用简体中文，公开标识符使用清晰英文。
 - 通过 PA 的 `kizuna_player_animation` Fabric 入口交换 protobuf 字节；新仓不引用 PA 的内部类。
 - 服务端只保存实体动画状态并按追踪关系发送，客户端只在主线程调用 PA 入口。

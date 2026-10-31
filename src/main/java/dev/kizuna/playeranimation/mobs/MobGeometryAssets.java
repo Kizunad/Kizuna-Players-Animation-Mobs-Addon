@@ -4,14 +4,14 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.entity.EntityType;
 
 /** 读取附属几何并在资源重载边界重新注册到 PA。 */
-final class MobGeometryAssets implements SimpleSynchronousResourceReloadListener {
+final class MobGeometryAssets implements ResourceManagerReloadListener {
     private static final String NAMESPACE = MobAnimationPackets.MOD_ID;
     private static final List<Registration> REGISTRATIONS = List.of(
             new Registration("geometry.mob.zombie", "geo/mob_skeletons.geo.json",
@@ -46,15 +46,10 @@ final class MobGeometryAssets implements SimpleSynchronousResourceReloadListener
     }
 
     @Override
-    public ResourceLocation getFabricId() {
-        return new ResourceLocation(NAMESPACE, "mob_geometry");
-    }
-
-    @Override
     public void onResourceManagerReload(ResourceManager manager) {
         // 重载注册先完成几何，再让客户端自动层重新读取实体状态。
         for (Registration registration : REGISTRATIONS) {
-            ResourceLocation resourceId = new ResourceLocation(NAMESPACE, registration.path());
+            Identifier resourceId = Identifier.fromNamespaceAndPath(NAMESPACE, registration.path());
             try (var stream = manager.getResourceOrThrow(resourceId).open()) {
                 byte[] geometry = stream.readAllBytes();
                 MobAnimationClient.registerGeometry(registration.geometryId(), geometry, registration.entityTypes(),

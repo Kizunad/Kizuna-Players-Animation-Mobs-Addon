@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.RemotePlayer;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
@@ -55,7 +55,7 @@ final class DoorBreakerClientCases {
     static LivingEntity create(Minecraft client, String name) {
         // 两种玩家只改变原版惯用手读取，其余关节、持物和绘制沿用正式实现。
         if (name.startsWith("vindicator_")) {
-            return EntityType.VINDICATOR.create(client.level);
+            return EntityTypes.VINDICATOR.create(client.level, MobAnimationClientTest.FIXTURE);
         }
         HumanoidArm mainArm = HumanoidArm.RIGHT;
         if (name.startsWith("left_player_")) {

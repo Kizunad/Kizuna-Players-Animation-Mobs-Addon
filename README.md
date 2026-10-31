@@ -4,7 +4,7 @@
 
 设计说明见 [`docs/design.md`](docs/design.md)。PA 只公开 `kizuna_player_animation` Fabric 入口，入口只接收和返回 protobuf 字节；本仓不 import PA 的客户端渲染内部类。服务端保存实体播放状态，按实体追踪关系发送同一份请求，客户端收到后在主线程交给 PA。
 
-返工内容、验证结果和未测范围见 [`docs/rework-report.md`](docs/rework-report.md)。环境为 Minecraft 1.20.1、Fabric、Java 17；运行时必须安装 PA。
+返工内容、验证结果和未测范围见 [`docs/rework-report.md`](docs/rework-report.md)。环境为 Minecraft 26.2、Fabric、Java 25；运行时必须安装 PA。
 
 已注册生物自动使用 PA 移动与动作层。村民、流浪商人、卫道士、掠夺者、唤魔者、幻术师、女巫均已接入；
 待机、行走、奔跑、潜行、游泳、骑乘、睡眠、攀爬直接观察客户端已有状态，不增加移动网络包。

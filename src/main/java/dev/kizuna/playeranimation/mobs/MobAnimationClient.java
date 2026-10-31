@@ -10,11 +10,9 @@ import java.util.List;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,12 +29,10 @@ public final class MobAnimationClient implements ClientModInitializer {
         // 只读取客户端已同步的状态，自动移动不增加服务端网络流量。
         host = findHost();
         ClientTickEvents.END_CLIENT_TICK.register(AUTOMATIC::tick);
-        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES)
-                .registerReloadListener(new MobGeometryAssets());
-        ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.PLAY,
-                (client, handler, buffer, sender) -> receive(client, handler, buffer));
-        ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.STOP,
-                (client, handler, buffer, sender) -> receive(client, handler, buffer));
+        ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(
+                Identifier.fromNamespaceAndPath(ID, "mob_geometry"), new MobGeometryAssets());
+        ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.PLAY, (payload, context) -> receive(payload));
+        ClientPlayNetworking.registerGlobalReceiver(MobAnimationPackets.STOP, (payload, context) -> receive(payload));
         LOG.info("生物动画附属已连接 PA 字节入口");
     }
 
@@ -54,16 +50,11 @@ public final class MobAnimationClient implements ClientModInitializer {
         exchange(request);
     }
 
-    private static void receive(Minecraft client,
-                                ClientPacketListener handler,
-                                FriendlyByteBuf buffer) {
+    private static void receive(MobAnimationPackets.Payload payload) {
+        // 26.2 的收包回调已在客户端主线程、且属于当前连接，解码后直接交给 PA，不再排队。
         try {
-            EntityAnimationRequest request = MobAnimationPackets.read(buffer, EntityAnimationRequest.parser());
-            client.execute(() -> {
-                if (client.getConnection() == handler) {
-                    exchange(request);
-                }
-            });
+            EntityAnimationRequest request = MobAnimationPackets.read(payload, EntityAnimationRequest.parser());
+            exchange(request);
         } catch (InvalidProtocolBufferException | IllegalArgumentException exception) {
             LOG.error("生物动画包无法解码: {}", exception.getMessage());
         }

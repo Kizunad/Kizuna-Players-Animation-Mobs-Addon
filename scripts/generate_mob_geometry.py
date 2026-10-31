@@ -1,4 +1,4 @@
-"""从 Minecraft 1.20.1 模型工厂的导出顶点裁切几何，保留原版逐面 UV。"""
+"""从原版模型工厂的导出顶点裁切几何，保留原版逐面 UV。"""
 import argparse
 import copy
 import json
