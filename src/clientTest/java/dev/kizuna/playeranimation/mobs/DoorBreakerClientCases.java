@@ -19,7 +19,7 @@ final class DoorBreakerClientCases {
     private record Timing(float hitSeconds, float durationSeconds) { }
 
     private static final Map<String, Timing> TIMINGS = Map.of(
-            "knock", new Timing(1.7f, 3), "cleave", new Timing(3.2f, 6), "ram", new Timing(2.4f, 5));
+            "knock", new Timing(1.25f, 2.55f), "cleave", new Timing(1.6f, 4.4f), "ram", new Timing(1.65f, 4.25f));
     private static final UUID PLAYER_ID = UUID.fromString("00000000-0000-0000-0000-000000000011");
 
     static List<String> names() {
