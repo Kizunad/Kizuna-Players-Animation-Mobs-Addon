@@ -138,7 +138,18 @@ tasks.register('prepareClientTestWorld', Copy) {
 tasks.named('runClientTest') {
     dependsOn tasks.named('prepareClientTestWorld')
     def report = layout.buildDirectory.file('clienttest-results.txt')
-    doFirst { report.get().asFile.text = 'success=false\n' }
+    def options = layout.buildDirectory.file('clienttest/options.txt')
+    doFirst {
+        report.get().asFile.text = 'success=false\n'
+        // 26.2 首启先弹无障碍引导页再进快速游戏，测试目录预置为已看过引导。
+        def file = options.get().asFile
+        if (file.exists()) {
+            file.text = file.text.replace('onboardAccessibility:true', 'onboardAccessibility:false')
+        } else {
+            file.parentFile.mkdirs()
+            file.text = 'onboardAccessibility:false\n'
+        }
+    }
     doLast {
         if (!report.get().asFile.text.startsWith('success=true')) {
             throw new GradleException("客户端验收失败，查看 ${report.get().asFile}")
