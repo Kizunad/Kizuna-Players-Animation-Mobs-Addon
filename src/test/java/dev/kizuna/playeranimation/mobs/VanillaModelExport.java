@@ -17,6 +17,7 @@ import net.minecraft.client.model.geom.builders.CubeDeformation;
 import net.minecraft.client.model.geom.builders.LayerDefinition;
 import net.minecraft.client.model.monster.illager.IllagerModel;
 import net.minecraft.client.model.monster.piglin.AdultPiglinModel;
+import net.minecraft.client.model.monster.skeleton.BoggedModel;
 import net.minecraft.client.model.monster.skeleton.SkeletonModel;
 import net.minecraft.client.model.monster.witch.WitchModel;
 import net.minecraft.client.model.monster.zombie.DrownedModel;
@@ -30,13 +31,15 @@ public final class VanillaModelExport {
     private static final int LEGACY_HEIGHT = 32;
     private static final int MODERN_HEIGHT = 64;
     private static final float OVERLAY_DILATION = 0.25f;
+    private static final float BOGGED_OVERLAY_DILATION = 0.2f;
     private static final float PIXELS_PER_BLOCK = 16;
     private static final int WHITE = 0xFFFFFFFF;
     // 1.20.1 类人网格上挂在根下的覆盖层；26.2 把它们移到了所属部件下。
     private static final Set<String> ROOT_OVERLAYS = Set.of(
             "hat", "jacket", "left_sleeve", "right_sleeve", "left_pants", "right_pants");
     private static final Set<String> HUMANOID_MESHES = Set.of(
-            "zombie", "skeleton", "piglin", "zombie_villager", "drowned", "drowned_overlay", "stray_overlay");
+            "zombie", "skeleton", "piglin", "zombie_villager", "drowned", "drowned_overlay", "stray_overlay",
+            "bogged", "bogged_overlay", "parched");
 
     private VanillaModelExport() { }
 
@@ -51,6 +54,8 @@ public final class VanillaModelExport {
         models.put("zombie", LayerDefinition.create(HumanoidModel.createMesh(CubeDeformation.NONE, 0),
                 TEXTURE_WIDTH, MODERN_HEIGHT));
         models.put("skeleton", SkeletonModel.createBodyLayer());
+        models.put("bogged", BoggedModel.createBodyLayer());
+        models.put("parched", SkeletonModel.createSingleModelDualBodyLayer());
         models.put("piglin", AdultPiglinModel.createBodyLayer());
         models.put("villager", LayerDefinition.create(VillagerModel.createBodyModel(),
                 TEXTURE_WIDTH, MODERN_HEIGHT));
@@ -61,6 +66,9 @@ public final class VanillaModelExport {
         models.put("drowned_overlay", DrownedModel.createBodyLayer(new CubeDeformation(OVERLAY_DILATION)));
         models.put("stray_overlay", LayerDefinition.create(
                 HumanoidModel.createMesh(new CubeDeformation(OVERLAY_DILATION), 0), TEXTURE_WIDTH, LEGACY_HEIGHT));
+        models.put("bogged_overlay", LayerDefinition.create(
+                HumanoidModel.createMesh(new CubeDeformation(BOGGED_OVERLAY_DILATION), 0),
+                TEXTURE_WIDTH, LEGACY_HEIGHT));
         JsonObject document = new JsonObject();
         models.forEach((name, model) -> document.add(name, exportModel(model.bakeRoot(), paths(name))));
         return document;

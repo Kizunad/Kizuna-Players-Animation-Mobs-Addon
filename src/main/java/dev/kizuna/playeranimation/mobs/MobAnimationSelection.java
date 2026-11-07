@@ -6,7 +6,9 @@ public final class MobAnimationSelection {
     public static final float RUNNING_THRESHOLD = 0.65f;
 
     public enum Posture { STANDING, SNEAKING, SWIMMING, RIDING, SLEEPING, CLIMBING }
-    public enum Activity { NONE, ATTACK, AXE_READY, CROSSBOW_CHARGE, CROSSBOW_HOLD, BOW, SPELL, DRINK, TRADE, HURT }
+    public enum Activity {
+        NONE, ATTACK, SPEAR, AXE_READY, CROSSBOW_CHARGE, CROSSBOW_HOLD, BOW, SPELL, DRINK, TRADE, HURT
+    }
     public enum ActionHand { MAIN, OFF }
     public enum Gait { NATURAL, SPRINTING }
     public record Motion(Posture posture, float limbSpeed, Gait gait) { }
@@ -15,7 +17,8 @@ public final class MobAnimationSelection {
     public static Clips select(Motion motion, Activity activity, ActionHand hand) {
         // 动作与移动分别选择，施法、喝药或挥砍时仍能保留下身移动。
         String action = switch (activity) {
-            case NONE -> "";
+            // 矛由 PA 按本帧使用与挥手状态采样，自动层只继续提供下身姿态。
+            case NONE, SPEAR -> "";
             case ATTACK -> "attack_main";
             case AXE_READY -> "trident_charge";
             case CROSSBOW_CHARGE -> "crossbow_charge";

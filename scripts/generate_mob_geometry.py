@@ -45,7 +45,8 @@ def boxes(part, low, high):
     side = "r" if part.startswith("right") else "l"
     if any(word in part for word in ("arm", "sleeve")):
         result = []
-        for bone, a, b in (("upper_arm", 19, 24), ("forearm", 15, 19), ("hand", 14, 15)):
+        # 肩、髋的外沿取原版尺寸；焦骸衣袖会略高于标准切口，不能裁掉顶面。
+        for bone, a, b in (("upper_arm", 19, high[1]), ("forearm", 15, 19), ("hand", 14, 15)):
             a, b = max(a, low[1]), min(b, high[1])
             if a < b:
                 result.append((side+"_"+bone, (low[0], a, low[2]), (high[0], b, high[2])))
@@ -56,7 +57,7 @@ def boxes(part, low, high):
                                (high[0], min(14, high[1]), low[2]+b*depth)))
         return result
     result = []
-    for bone, a, b in (("thigh", 6, 12), ("shin", 1, 6)):
+    for bone, a, b in (("thigh", 6, high[1]), ("shin", 1, 6)):
         a, b = max(a, low[1]), min(b, high[1])
         if a < b:
             result.append((side+"_"+bone, (low[0], a, low[2]), (high[0], b, high[2])))
@@ -128,6 +129,9 @@ def append_cube(bones, source, model_name, width, height, part=None, mapping=Non
         for face, unit in FACES.items():
             normal = NORMALS[face]
             axis = next(i for i,x in enumerate(normal) if x)
+            # 原版沼骸蘑菇是双面平面，只保留具有面积的面，不伪造厚度。
+            if any(seg_high[i] == seg_low[i] for i in range(3) if i != axis):
+                continue
             plane = seg_high[axis] if normal[axis] > 0 else seg_low[axis]
             original_plane = high[axis] if normal[axis] > 0 else low[axis]
             if abs(plane-original_plane) > 1e-5:
@@ -139,9 +143,12 @@ def append_cube(bones, source, model_name, width, height, part=None, mapping=Non
             if abs(raw_plane-source_low[raw_axis]) > 1e-5 and abs(raw_plane-source_high[raw_axis]) > 1e-5:
                 continue
             sign = -1 if abs(raw_plane-source_low[raw_axis]) < 1e-5 else 1
+            if source_low[raw_axis] == source_high[raw_axis]:
+                sign = normal[axis] * columns[raw_axis][axis]
             quad = next(q for q in quads if q[0]["normal"][raw_axis]*sign > 0.9)
             def dilate(p):
-                return [p[i]+inflation*(2*(p[i]-source_low[i])/(source_high[i]-source_low[i])-1)
+                return [p[i] if source_high[i] == source_low[i] else
+                        p[i]+inflation*(2*(p[i]-source_low[i])/(source_high[i]-source_low[i])-1)
                         for i in range(3)]
             faces[face] = encode_uv([interpolate_uv(quad, dilate(p)) for p in raw_points],width,height,face)
         if not faces:
@@ -174,13 +181,14 @@ def geometry(name, sources, template):
     if name == "wither_skeleton":
         model_name = "skeleton"
     cubes = sources[model_name]
-    legacy = name in ("skeleton","wither_skeleton","stray_overlay")
+    legacy = name in ("skeleton","wither_skeleton","stray_overlay","bogged","bogged_overlay","parched")
     height = 32 if legacy else 64
     for source in cubes:
         part = source["part"]
         if part in ("cloak","ear") or part.startswith("arms"):
             continue
-        if part == "hat" and name in ("zombie","drowned","drowned_overlay","skeleton","wither_skeleton","stray_overlay"):
+        if part == "hat" and name in ("zombie","drowned","drowned_overlay","skeleton","wither_skeleton",
+                                      "stray_overlay","bogged","bogged_overlay","parched"):
             continue  # 原版僵尸和骷髅关闭 hat，只有本体头盒可见。
         if part.startswith("head/hat") and name == "illager":
             continue  # 原版灾厄村民关闭帽子。
@@ -212,7 +220,7 @@ def geometry(name, sources, template):
                         lo[0] = 0
                         transform = lambda p: (2+p[1],12+p[0],p[2])
                     append_cube(bones,source,model_name,64,height,side+"_arm",transform,(lo,hi))
-    if name == "stray_overlay":
+    if name in ("stray_overlay", "bogged_overlay"):
         base = geometry("skeleton", sources, template)
         for bone in base["bones"]:
             bones[bone["name"]]["pivot"] = bone["pivot"]
@@ -230,7 +238,7 @@ def main():
     template = next(g for g in template_doc["minecraft:geometry"] if g["description"]["identifier"] == "geometry.player.classic")
     sources = json.loads(args.vanilla_models.read_text())
     names = ("zombie","skeleton","wither_skeleton","piglin","villager","illager","zombie_villager",
-             "drowned","drowned_overlay","stray_overlay","witch")
+             "drowned","drowned_overlay","stray_overlay","witch","bogged","bogged_overlay","parched")
     document = {"format_version":"1.12.0","minecraft:geometry":[geometry(n,sources,template) for n in names]}
     content = json.dumps(document,ensure_ascii=False,indent=2)+"\n"
     if args.check:

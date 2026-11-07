@@ -1,0 +1,6 @@
+{
+  "required": true,
+  "package": "dev.kizuna.playeranimation.mobs.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["LivingUseFlagsAccess", "FrameCaptureMixin"]
+}

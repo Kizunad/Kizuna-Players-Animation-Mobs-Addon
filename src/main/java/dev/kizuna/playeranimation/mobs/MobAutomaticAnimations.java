@@ -13,6 +13,8 @@ import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.item.SwingAnimationType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.monster.illager.AbstractIllager;
@@ -96,7 +98,18 @@ final class MobAutomaticAnimations {
             return Activity.HURT;
         }
         if (entity.swinging) {
+            // 原版未指定挥手侧时使用主手，与渲染状态的物理手臂选择保持一致。
+            InteractionHand swingHand = InteractionHand.MAIN_HAND;
+            if (entity.swingingArm == InteractionHand.OFF_HAND) {
+                swingHand = InteractionHand.OFF_HAND;
+            }
+            if (entity.getItemInHand(swingHand).getSwingAnimation().type() == SwingAnimationType.STAB) {
+                return Activity.SPEAR;
+            }
             return Activity.ATTACK;
+        }
+        if (entity.isUsingItem() && entity.getUseItem().getUseAnimation() == ItemUseAnimation.SPEAR) {
+            return Activity.SPEAR;
         }
         if (entity instanceof Witch witch && witch.isDrinkingPotion()) {
             return Activity.DRINK;
@@ -153,7 +166,7 @@ final class MobAutomaticAnimations {
             case DRINK -> Math.min(1, (float) elapsed / DRINK_TICKS);
             case TRADE -> (float) (elapsed % INTERACTION_TICKS) / INTERACTION_TICKS;
             case HURT -> 1 - (float) entity.hurtTime / HURT_TICKS;
-            case NONE -> 0;
+            case NONE, SPEAR -> 0;
         };
     }
 }

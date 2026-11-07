@@ -53,7 +53,11 @@ class VanillaGeometryTest(unittest.TestCase):
                 for bone in geometry["bones"]:
                     for cube in bone.get("cubes",[]):
                         x,y,z = cube["size"]
-                        self.assertGreater(min(x,y,z),0)
+                        if cube["part"].startswith("head/mushrooms/"):
+                            self.assertEqual(1, sum(value == 0 for value in (x,y,z)))
+                            self.assertEqual({"north", "south"}, set(cube["uv"]))
+                        else:
+                            self.assertGreater(min(x,y,z),0)
                         volumes[cube["source"]] += x*y*z
                 for source_id,volume in volumes.items():
                     model,part,index = source_id.split(":")
@@ -75,6 +79,10 @@ class VanillaGeometryTest(unittest.TestCase):
         ears = [c for c in head("piglin") if c["part"].endswith("_ear")]
         self.assertEqual(2,len(ears))
         self.assertEqual({-30,30},{round(c["rotation"][2]) for c in ears})
+        mushrooms = [c for c in head("bogged") if c["part"].startswith("head/mushrooms/")]
+        self.assertEqual(6, len(mushrooms))
+        self.assertTrue(all(abs(c["inflate"]-0.2)<1e-5
+                            for b in geometries["bogged_overlay"]["bones"] for c in b.get("cubes",[])))
         for name in ("drowned_overlay","stray_overlay"):
             self.assertTrue(all(abs(c["inflate"]-0.25)<1e-5 for b in geometries[name]["bones"] for c in b.get("cubes",[])))
 

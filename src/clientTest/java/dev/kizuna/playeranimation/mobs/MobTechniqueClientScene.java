@@ -78,12 +78,13 @@ final class MobTechniqueClientScene {
             actor.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_AXE));
             actor.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
             actor.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.DIAMOND_CHESTPLATE));
-            var cow = EntityTypes.COW.create(world, EntitySpawnReason.COMMAND);
-            cow.snapTo(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
-            cow.setNoAi(true /* aiDisabled */);
-            world.addFreshEntity(cow);
-            targetId = cow.getId();
-            actor.setTarget(cow);
+            // 铁傀儡属于卫道士的原版敌对目标，且有足够生命等待完整起手。
+            var opponent = EntityTypes.IRON_GOLEM.create(world, EntitySpawnReason.COMMAND);
+            opponent.snapTo(position.x, position.y, position.z + TARGET_DISTANCE, 0, 0);
+            opponent.setNoAi(true /* aiDisabled */);
+            world.addFreshEntity(opponent);
+            targetId = opponent.getId();
+            actor.setTarget(opponent);
             spawned.complete(actor.getId());
         } catch (RuntimeException failure) {
             spawned.completeExceptionally(failure);
@@ -96,7 +97,9 @@ final class MobTechniqueClientScene {
             return;
         }
         var requests = MobAnimationServer.snapshot(actor);
-        observedClips = requests.stream().map(request -> request.getPlay().getAnimationId()).toList().toString();
+        observedClips = requests.stream().map(request -> request.getPlay().getAnimationId()).toList()
+                + "; health=" + actor.getHealth() + "; position=" + actor.position()
+                + "; target=" + actor.getTarget() + "; noAi=" + actor.isNoAi();
         for (var request : requests) {
             var play = request.getPlay();
             if (DOOR_CLIPS.contains(play.getAnimationId())) {
