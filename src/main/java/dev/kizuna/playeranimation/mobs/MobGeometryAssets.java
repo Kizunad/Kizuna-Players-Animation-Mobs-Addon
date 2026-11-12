@@ -1,7 +1,9 @@
 package dev.kizuna.playeranimation.mobs;
 
 import java.io.IOException;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -44,9 +46,12 @@ final class MobGeometryAssets implements ResourceManagerReloadListener {
             .flatMap(registration -> registration.entityTypes().stream())
             .collect(Collectors.toUnmodifiableSet());
 
+    private static final Map<EntityType<?>, Boolean> SUPPORTED = new IdentityHashMap<>();
+
     static boolean supports(EntityType<?> type) {
-        // 自动驱动严格使用同一份已注册几何列表。
-        return ENTITY_TYPES.contains(BuiltInRegistries.ENTITY_TYPE.getKey(type).toString());
+        // 自动驱动严格使用同一份已注册几何列表；每 tick 对每个实体都问，按类型记住结果，不反复拼注册名。
+        return SUPPORTED.computeIfAbsent(type,
+                key -> ENTITY_TYPES.contains(BuiltInRegistries.ENTITY_TYPE.getKey(key).toString()));
     }
 
     @Override

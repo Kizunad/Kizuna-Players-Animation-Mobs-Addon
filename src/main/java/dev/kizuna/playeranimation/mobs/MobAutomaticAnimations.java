@@ -13,6 +13,7 @@ import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.ItemUseAnimation;
 import net.minecraft.world.item.SwingAnimationType;
 import net.minecraft.world.entity.LivingEntity;
@@ -33,7 +34,9 @@ final class MobAutomaticAnimations {
     private static final int BOW_TICKS = 38;
     private static final int INTERACTION_TICKS = 8;
     private final Map<Integer, ActionClock> clocks = new HashMap<>();
+    private final MobAutomaticSubmissions submissions = new MobAutomaticSubmissions();
     private ClientLevel world;
+    private long ticks;
 
     private record ActionClock(Activity activity, int startedAt) { }
 
@@ -41,12 +44,15 @@ final class MobAutomaticAnimations {
         // 世界切换后实体 ID 可复用，自动状态不能跨世界保存。
         if (world != client.level) {
             clocks.clear();
+            submissions.clear();
             world = client.level;
         }
         if (world == null || client.isPaused()) {
             return;
         }
+        ticks++;
         clocks.keySet().removeIf(id -> world.getEntity(id) == null);
+        submissions.retain(id -> world.getEntity(id) != null);
         for (var entity : world.entitiesForRendering()) {
             if (entity instanceof LivingEntity living && MobGeometryAssets.supports(living.getType())) {
                 update(living);
@@ -57,12 +63,14 @@ final class MobAutomaticAnimations {
     void reset() {
         // 资源重载会清理 PA 播放器，下个 tick 从现存实体重新建立自动层。
         clocks.clear();
+        submissions.clear();
     }
 
     private void update(LivingEntity entity) {
         // 死亡交由原版整体倒地变换，移除自动与显式动作，避免死亡后残留挥砍。
         int entityId = entity.getId();
         if (!entity.isAlive()) {
+            submissions.forget(entityId);
             if (clocks.remove(entityId) != null) {
                 Clear clear = Clear.newBuilder().setEntityId(entityId).build();
                 MobAnimationClient.exchange(EntityAnimationRequest.newBuilder().setClear(clear).build());
@@ -83,11 +91,18 @@ final class MobAutomaticAnimations {
             hand = ActionHand.OFF;
         }
         var clips = MobAnimationSelection.select(motion, activity, hand);
+        float progress = progress(entity, clock);
+        // 站着不动、匀速走路时每 tick 都是同一个状态，PA 已经在播，不必再提交。
+        var state = new MobAutomaticSubmissions.State(clips.base(), clips.action(), progress,
+                entity.getMainArm() == HumanoidArm.LEFT);
+        if (!submissions.due(entityId, entity, state, ticks)) {
+            return;
+        }
         Automatic automatic = Automatic.newBuilder()
                 .setEntityId(entityId)
                 .setBaseAnimationId(clips.base())
                 .setActionAnimationId(clips.action())
-                .setActionProgress(progress(entity, clock))
+                .setActionProgress(progress)
                 .build();
         MobAnimationClient.exchange(EntityAnimationRequest.newBuilder().setAutomatic(automatic).build());
     }
