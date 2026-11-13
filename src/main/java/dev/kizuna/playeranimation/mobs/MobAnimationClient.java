@@ -60,7 +60,8 @@ public final class MobAnimationClient implements ClientModInitializer {
         }
     }
 
-    static void exchange(EntityAnimationRequest request) {
+    /** 把请求交给 PA；PA 收下返回 true，拒收时记日志并返回 false。几何注册被拒直接抛出。 */
+    static boolean exchange(EntityAnimationRequest request) {
         // 自动层与网络显式动作都必须由客户端主线程交给同一 PA 入口。
         EntityAnimationResponse response;
         try {
@@ -74,7 +75,9 @@ public final class MobAnimationClient implements ClientModInitializer {
             if (request.hasRegisterGeometry()) {
                 throw new IllegalStateException(response.getDetail());
             }
+            return false;
         }
+        return true;
     }
 
     private static PlayerAnimationHost findHost() {

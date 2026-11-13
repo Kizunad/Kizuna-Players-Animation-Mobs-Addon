@@ -95,16 +95,17 @@ final class MobAutomaticAnimations {
         // 站着不动、匀速走路时每 tick 都是同一个状态，PA 已经在播，不必再提交。
         var state = new MobAutomaticSubmissions.State(clips.base(), clips.action(), progress,
                 entity.getMainArm() == HumanoidArm.LEFT);
-        if (!submissions.due(entityId, entity, state, ticks)) {
-            return;
-        }
+        submissions.submit(entityId, entity, state, ticks, MobAutomaticAnimations::send);
+    }
+
+    private static boolean send(int entityId, MobAutomaticSubmissions.State state) {
         Automatic automatic = Automatic.newBuilder()
                 .setEntityId(entityId)
-                .setBaseAnimationId(clips.base())
-                .setActionAnimationId(clips.action())
-                .setActionProgress(progress)
+                .setBaseAnimationId(state.base())
+                .setActionAnimationId(state.action())
+                .setActionProgress(state.progress())
                 .build();
-        MobAnimationClient.exchange(EntityAnimationRequest.newBuilder().setAutomatic(automatic).build());
+        return MobAnimationClient.exchange(EntityAnimationRequest.newBuilder().setAutomatic(automatic).build());
     }
 
     static Activity activity(LivingEntity entity) {

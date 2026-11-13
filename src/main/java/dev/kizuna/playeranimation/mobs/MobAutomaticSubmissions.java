@@ -18,16 +18,27 @@ final class MobAutomaticSubmissions {
 
     private final Map<Integer, Submitted> submitted = new HashMap<>();
 
-    /** 这个状态需要提交时返回 true 并记下；与上次相同且未到重发间隔时返回 false。 */
-    boolean due(int entityId, Object entity, State state, long tick) {
+    /** 把一个状态交给 PA；PA 收下返回 true。 */
+    interface Sender {
+        boolean send(int entityId, State state);
+    }
+
+    /**
+     * 状态变了或到了重发间隔就交给 sender。PA 收下才记成已发；
+     * 拒收（几何还没注册、正在重载、实体还没加载）不记，下一 tick 照样再交。
+     */
+    void submit(int entityId, Object entity, State state, long tick, Sender sender) {
         Submitted last = submitted.get(entityId);
         // 实体 ID 会复用：同一个 ID 换了实体对象，PA 那边的旧层已随卸载清掉，必须重新提交。
         if (last != null && last.entity() == entity && last.state().equals(state)
                 && tick - last.tick() < REFRESH_TICKS) {
-            return false;
+            return;
         }
-        submitted.put(entityId, new Submitted(entity, state, tick));
-        return true;
+        if (sender.send(entityId, state)) {
+            submitted.put(entityId, new Submitted(entity, state, tick));
+        } else {
+            submitted.remove(entityId);
+        }
     }
 
     void forget(int entityId) {
