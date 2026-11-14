@@ -38,6 +38,7 @@ import net.minecraft.world.entity.LivingEntity;
 
 /** 服务端按追踪关系同步任意 LivingEntity 的 PA 动画。 */
 public final class MobAnimationServer implements ModInitializer {
+    private static final float FULL_RATE = 1;
     private static final MobAnimationSyncState STATE = new MobAnimationSyncState();
     private static final Set<TrackingPair> PENDING = new HashSet<>();
     private record TrackingPair(UUID target, UUID viewer) { }
@@ -77,12 +78,20 @@ public final class MobAnimationServer implements ModInitializer {
 
     public static String playFrom(LivingEntity entity, String animation, long startTick) {
         // 功法重试及迟到效果保留原始起点，不把已过去的动作重新播一遍。
-        return play(entity, animation, LoopMode.RESOURCE, startTick);
+        return play(entity, animation, LoopMode.RESOURCE, startTick, FULL_RATE);
+    }
+
+    public static String playFrom(LivingEntity entity, String animation, long startTick, float rate) {
+        // 功法按身体节奏放慢时间轴时，动作用同一个倍率放慢；倍率只能在 (0,1]，和玩家那边的 PA 接口一致。
+        if (!Float.isFinite(rate) || rate <= 0 || rate > FULL_RATE) {
+            throw new IllegalArgumentException("播放倍率必须在 (0,1]");
+        }
+        return play(entity, animation, LoopMode.RESOURCE, startTick, rate);
     }
 
     public static String repeat(LivingEntity entity, String animation) {
         // 持续交互按资源时长循环，由交互结束显式停止。
-        return play(entity, animation, LoopMode.REPEAT, entity.level().getGameTime());
+        return play(entity, animation, LoopMode.REPEAT, entity.level().getGameTime(), FULL_RATE);
     }
 
     public static List<EntityAnimationRequest> snapshot(LivingEntity entity) {
@@ -93,10 +102,11 @@ public final class MobAnimationServer implements ModInitializer {
 
     private static String play(LivingEntity entity, String animation, LoopMode loopMode) {
         // 命令路径以当前世界时间起播。
-        return play(entity, animation, loopMode, entity.level().getGameTime());
+        return play(entity, animation, loopMode, entity.level().getGameTime(), FULL_RATE);
     }
 
-    private static String play(LivingEntity entity, String animation, LoopMode loopMode, long startTick) {
+    private static String play(LivingEntity entity, String animation, LoopMode loopMode, long startTick,
+                               float rate) {
         // 先验证再登记，非法起点不能改变追踪补发状态。
         requireServerThread(entity);
         validateAnimation(animation);
@@ -108,6 +118,10 @@ public final class MobAnimationServer implements ModInitializer {
                 .setEntityId(entity.getId())
                 .setAnimationId(animation)
                 .setStartTick(startTick);
+        if (rate < FULL_RATE) {
+            // 原速不带这个字段，和加字段以前发出的请求完全相同。
+            play.setPlaybackRate(rate);
+        }
         if (loopMode == LoopMode.REPEAT) {
             play.setLoop(true /* loop */);
         } else if (loopMode == LoopMode.ONCE) {
