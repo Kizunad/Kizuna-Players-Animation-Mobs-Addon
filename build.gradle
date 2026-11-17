@@ -97,6 +97,8 @@ sourceSets {
     }
 }
 
+def clienttestRunDirectory = providers.gradleProperty('clienttestRunDir').getOrElse('build/clienttest')
+
 loom {
     mods {
         kizuna_players_animation_mobs { sourceSet sourceSets.main }
@@ -114,7 +116,7 @@ loom {
         clientTest {
             client()
             source sourceSets.clientTest
-            runDir 'build/clienttest'
+            runDir clienttestRunDirectory
             programArgs '--quickPlaySingleplayer', 'animation-mob-test', '--width', '1280', '--height', '960'
             vmArg '-Dkpa.mobs.clientTest.report=../clienttest-results.txt'
         }
@@ -132,17 +134,17 @@ tasks.named('runGametest') {
 tasks.register('prepareClientTestWorld', Copy) {
     dependsOn tasks.named('runGametest')
     from layout.buildDirectory.dir('gametest/world')
-    into layout.buildDirectory.dir('clienttest/saves/animation-mob-test')
+    into file("${clienttestRunDirectory}/saves/animation-mob-test")
     exclude 'session.lock'
 }
 tasks.named('runClientTest') {
     dependsOn tasks.named('prepareClientTestWorld')
     def report = layout.buildDirectory.file('clienttest-results.txt')
-    def options = layout.buildDirectory.file('clienttest/options.txt')
+    def options = layout.projectDirectory.file("${clienttestRunDirectory}/options.txt")
     doFirst {
         report.get().asFile.text = 'success=false\n'
         // 26.2 首启先弹无障碍引导页再进快速游戏，测试目录预置为已看过引导。
-        def file = options.get().asFile
+        def file = options.asFile
         if (file.exists()) {
             file.text = file.text.replace('onboardAccessibility:true', 'onboardAccessibility:false')
         } else {
