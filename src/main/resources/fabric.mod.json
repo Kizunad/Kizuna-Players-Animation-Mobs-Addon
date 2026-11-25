@@ -3,7 +3,13 @@
   "id": "kizuna_players_animation_mobs",
   "version": "${version}",
   "name": "Kizuna Players Animation Mobs Addon",
-  "description": "把原版类人生物接入 Kizuna Players Animation 的 24 骨蒙皮渲染",
+  "contact": {
+    "homepage": "https://github.com/Kizunad/Kizuna-Players-Animation-Mobs-Addon",
+    "sources": "https://github.com/Kizunad/Kizuna-Players-Animation-Mobs-Addon",
+    "issues": "https://github.com/Kizunad/Kizuna-Players-Animation-Mobs-Addon/issues"
+  },
+  "icon": "assets/kizuna_players_animation_mobs/icon.png",
+  "description": "Brings jointed movement and skinned character models to vanilla humanoid mobs.\n让原版类人生物使用多关节骨架和蒙皮模型表现动作。",
   "authors": ["Kizunad"],
   "license": "MIT",
   "environment": "*",
