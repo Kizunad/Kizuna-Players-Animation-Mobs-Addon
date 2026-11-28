@@ -8,6 +8,7 @@ import dev.kizuna.playeranimation.mobs.MobAnimationSelection.Posture;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Automatic;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Clear;
 import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.EntityAnimationRequest;
+import dev.kizuna.playeranimation.protocol.pb.EntityAnimationProtocol.Stop;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
@@ -33,7 +34,10 @@ final class MobAutomaticAnimations {
     private static final int CHARGE_TICKS = 25;
     private static final int BOW_TICKS = 38;
     private static final int INTERACTION_TICKS = 8;
+    private static final String SEATED_PREFIX = "campfire_";
     private final Map<Integer, ActionClock> clocks = new HashMap<>();
+    // 服务端正在给哪些生物播火边的片段（坐、烤火、抱袖、起身）：挨打时它们由快版起身接，不叠站着的受击动作。
+    private final Map<Integer, String> seated = new HashMap<>();
     private final MobAutomaticSubmissions submissions = new MobAutomaticSubmissions();
     private ClientLevel world;
     private long ticks;
@@ -45,6 +49,7 @@ final class MobAutomaticAnimations {
         if (world != client.level) {
             clocks.clear();
             submissions.clear();
+            seated.clear();
             world = client.level;
         }
         if (world == null || client.isPaused()) {
@@ -52,6 +57,7 @@ final class MobAutomaticAnimations {
         }
         ticks++;
         clocks.keySet().removeIf(id -> world.getEntity(id) == null);
+        seated.keySet().removeIf(id -> world.getEntity(id) == null);
         submissions.retain(id -> world.getEntity(id) != null);
         for (var entity : world.entitiesForRendering()) {
             if (entity instanceof LivingEntity living && MobGeometryAssets.supports(living.getType())) {
@@ -64,6 +70,22 @@ final class MobAutomaticAnimations {
         // 资源重载会清理 PA 播放器，下个 tick 从现存实体重新建立自动层。
         clocks.clear();
         submissions.clear();
+        seated.clear();
+    }
+
+    void observe(EntityAnimationRequest request) {
+        // 只记服务端发来的显式片段：火边的片段起播时记下，停的正是它或全停时撤掉。
+        if (request.hasPlay()) {
+            var play = request.getPlay();
+            if (play.getAnimationId().startsWith(SEATED_PREFIX)) {
+                seated.put(play.getEntityId(), play.getAnimationId());
+            }
+        } else if (request.hasStop()) {
+            Stop stop = request.getStop();
+            if (stop.getAll() || stop.getAnimationId().equals(seated.get(stop.getEntityId()))) {
+                seated.remove(stop.getEntityId());
+            }
+        }
     }
 
     private void update(LivingEntity entity) {
@@ -77,7 +99,7 @@ final class MobAutomaticAnimations {
             }
             return;
         }
-        Activity activity = activity(entity);
+        Activity activity = shown(entity);
         ActionClock clock = clocks.get(entityId);
         if (clock == null || clock.activity() != activity) {
             clock = new ActionClock(activity, entity.tickCount);
@@ -96,6 +118,15 @@ final class MobAutomaticAnimations {
         var state = new MobAutomaticSubmissions.State(clips.base(), clips.action(), progress,
                 entity.getMainArm() == HumanoidArm.LEFT);
         submissions.submit(entityId, entity, state, ticks, MobAutomaticAnimations::send);
+    }
+
+    private Activity shown(LivingEntity entity) {
+        // 火边的生物挨打由服务端的快版起身接，不叠站着的受击动作。
+        Activity observed = activity(entity);
+        if (observed == Activity.HURT && seated.containsKey(entity.getId())) {
+            return Activity.NONE;
+        }
+        return observed;
     }
 
     private static boolean send(int entityId, MobAutomaticSubmissions.State state) {

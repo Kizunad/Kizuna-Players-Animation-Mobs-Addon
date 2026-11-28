@@ -64,6 +64,7 @@ public final class MobAnimationServer implements ModInitializer {
             PENDING.removeIf(pair -> pair.viewer().equals(viewer));
         }));
         ServerTickEvents.END_SERVER_TICK.register(MobAnimationServer::tick);
+        MobIdlePoses.register();
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             STATE.clear();
             PENDING.clear();

@@ -54,6 +54,7 @@ public final class MobAnimationClient implements ClientModInitializer {
         // 26.2 的收包回调已在客户端主线程、且属于当前连接，解码后直接交给 PA，不再排队。
         try {
             EntityAnimationRequest request = MobAnimationPackets.read(payload, EntityAnimationRequest.parser());
+            AUTOMATIC.observe(request);
             exchange(request);
         } catch (InvalidProtocolBufferException | IllegalArgumentException exception) {
             LOG.error("生物动画包无法解码: {}", exception.getMessage());

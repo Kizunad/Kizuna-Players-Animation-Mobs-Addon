@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "environment": "*",
   "entrypoints": {
-    "fabric-gametest": ["dev.kizuna.playeranimation.mobs.MobAnimationGameTest"]
+    "fabric-gametest": [
+      "dev.kizuna.playeranimation.mobs.MobAnimationGameTest",
+      "dev.kizuna.playeranimation.mobs.MobIdlePosesGameTest"
+    ]
   }
 }
